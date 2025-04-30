@@ -69,7 +69,7 @@ def sentimentAnalysis(newspapers_df, NEGATIVE, NEUTRAL, POSITIVE):
     """STEP 2"""
     newspapers_df['things'] = newspapers_df['text'].astype(str).apply(get_sentiment)
     newspapers_df['sentiment'] = newspapers_df['things'].apply(lambda x: x[0])
-    newspapers_df['score'] = newspapers_df['things'].apply(lambda x: 100 * (NEGATIVE * x[1][0] + NEUTRAL * x[0][1] + POSITIVE * x[1][2]))
+    newspapers_df['score'] = newspapers_df['things'].apply(lambda x: 100 * (NEGATIVE * x[1][0] + NEUTRAL * x[1][1] + POSITIVE * x[1][2]))
     newspapers_df.drop('things', axis=1, inplace=True)
     return newspapers_df
 
@@ -121,7 +121,7 @@ def newspaper_sentiment_pipeline(coin, queries_path='queries.txt', NEGATIVE=-1, 
     coin_newspapers['date'] = coin_newspapers['date'].dt.date
     
     # Step 4: Merge the newspaper data with the full/market data
-    df = pd.read_csv(f'fulldata/{coin}_df.csv')
+    df = pd.read_csv(fullDataPath(coin))
     df['time'] = pd.to_datetime(df['time'])  # Convert 'time' to datetime
     coin_newspapers['date'] = pd.to_datetime(coin_newspapers['date'])  # Convert 'date' to datetime
     merged_df = pd.merge(df, coin_newspapers, left_on='time', right_on='date', how='inner')
@@ -139,5 +139,5 @@ def get_fgi_data():
       fgi_df['timestamp'] = pd.to_datetime(fgi_df['timestamp'], unit='s')
       return fgi_df
   else:
-    print("Couldn\'t get FGI data with status code" + str(json.status_code))
+    print(f'Couldn\'t do it because response code is {json.status_code}')
     return None
