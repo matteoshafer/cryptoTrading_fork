@@ -1,2 +1,10 @@
-gradient
 volume
+SMA_20
+SMA_50
+Volume_MA_20
+OBV
+score_x
+TextType
+BB_Lower
+BB_Middle
+BB_Upper

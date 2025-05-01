@@ -5,6 +5,9 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import time
+
+from sklearn.model_selection import cross_val_score
+from sklearn.tree import DecisionTreeRegressor
 from tqdm import tqdm
 from contextlib import nullcontext
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -15,6 +18,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import re
+
+import CONSTANTS
 from CONSTANTS import *
 
 
@@ -141,3 +146,27 @@ def get_fgi_data():
   else:
     print(f'Couldn\'t do it because response code is {json.status_code}')
     return None
+
+def myFillNa(df):
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            df[col].fillna(0, inplace=True)
+        elif pd.api.types.is_string_dtype(df[col]) or pd.api.types.is_object_dtype(df[col]):
+            df[col].fillna(CONSTANTS.EMPTY_STRING, inplace=True)
+        else:
+            df[col].fillna(np.nan, inplace=True)
+
+def cv_metrics(model, data, yCol='gradient', v=5, trainingColsPath='training_columns.txt'):
+    model = DecisionTreeRegressor(max_depth=5)
+    trainingCols = open('training_columns.txt', 'r').readlines()
+    trainingCols = [i.strip() for i in trainingCols]
+    assert yCol not in trainingCols, f'{yCol} should not be in trainingCols but was found in it'
+    myFillNa(data)
+    X = pd.get_dummies(data[trainingCols])
+    y = data[yCol]
+    cv_scores = -cross_val_score(model, X, y, cv=10, scoring='neg_root_mean_squared_error')
+    cv_scores = pd.Series(cv_scores)
+    cv_scores.index += 1
+    cv_scores.plot.bar()
+    print(f'CV RMSE: {cv_scores.mean()}')
+    return cv_scores
