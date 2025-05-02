@@ -170,3 +170,15 @@ def cv_metrics(model, data, yCol='gradient', v=5, trainingColsPath='training_col
     cv_scores.plot.bar()
     print(f'CV RMSE: {cv_scores.mean()}')
     return cv_scores
+
+def setup(coin, targetCol='gradient', closeCol='close'):
+    data = pd.read_csv(fullDataPath(coin))
+    trainingCols = open(TRAINING_COLUMNS, 'r').readlines()
+    trainingCols = [i.strip() for i in trainingCols]
+    setDiff = np.setdiff1d(trainingCols, data.columns)
+    assert np.isin(trainingCols, data.columns).all(), f'{", ".join(setDiff)} not in data'
+    X = data[trainingCols]
+    data[targetCol] = data[closeCol].diff().fillna(0.0)
+    data['TextType'] = data['link'].apply(lambda x: 'tweet' if x == CONSTANTS.EMPTY_STRING else 'newspaper')
+    y = data[targetCol]
+    return data, X, y

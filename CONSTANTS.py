@@ -1,3 +1,5 @@
 EMPTY_STRING = '-'
 CMC_KEY = "98464488-2db9-4ddc-9b98-6b48f8b623dc"
 LIMIT = 365
+TRAINING_COLUMNS = 'training_columns.txt'
+COIN = 'BTC'
