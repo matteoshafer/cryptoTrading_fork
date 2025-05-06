@@ -1,24 +1,19 @@
-import re
 import os
-from serpapi import GoogleSearch
-import requests
-from bs4 import BeautifulSoup
-import pandas as pd
+import re
 import time
-
+from datetime import datetime, timedelta
+import numpy as np
+import pandas as pd
+import requests
+import torch
+from audioread.ffdec import ReadTimeoutError
+from bs4 import BeautifulSoup
+from serpapi import GoogleSearch
 from sklearn.model_selection import cross_val_score
 from sklearn.tree import DecisionTreeRegressor
-from tqdm import tqdm
-from contextlib import nullcontext
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-import torch
 from torch.nn.functional import softmax
-import torch
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import re
-
+from tqdm import tqdm
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import CONSTANTS
 from CONSTANTS import *
 
@@ -182,3 +177,57 @@ def setup(coin, targetCol='gradient', closeCol='close'):
     data['TextType'] = data['link'].apply(lambda x: 'tweet' if x == CONSTANTS.EMPTY_STRING else 'newspaper')
     y = data[targetCol]
     return data, X, y
+
+def prices(product_id, period=30, granularity=86400, start=None, end=None):
+    """
+    Fetch historical candlestick data for a cryptocurrency pair from now to the specified number of days in the past.
+
+    :param product_id: The product ID for the crypto pair (e.g., 'BTC-USD').
+    :param period: Number of days of historical data to fetch.
+    :param granularity: Desired time slice in seconds (60, 300, 900, 3600, 21600, 86400).
+    :return: DataFrame containing historical data.
+    """
+    if not product_id.endswith('-USD'):
+        product_id += '-USD'
+    product_id = product_id.upper()
+    url = f"https://api.exchange.coinbase.com/products/{product_id}/candles"
+    if start is None and end is None: # get data from specified number of days ago if date bounds are not specified.
+        end = datetime.now()
+        start = end - timedelta(days=period)
+    coin = product_id.split('-')[0]
+    all_data = []
+
+    while start < end:
+        end_slice = min(start + timedelta(seconds=granularity * 300), end)
+        params = {
+            'start': start.isoformat(),
+            'end': end_slice.isoformat(),
+            'granularity': granularity
+        }
+
+        try:
+            response = requests.get(url, params=params)
+        except ConnectionError:
+            print("No internet connection")
+            return None, coin
+        except ReadTimeoutError:
+            print('Your wifi likely doesn\'t allow to access Coinbase API')
+            return None, coin
+
+        if response.status_code == 200:
+            data = response.json()
+            all_data.extend(data)
+        else:
+            print("Failed to fetch data:", response.text)
+            break
+
+        start = end_slice
+
+    if all_data:
+        columns = ['time', 'low', 'high', 'open', 'close', 'volume']
+        data = pd.DataFrame(all_data, columns=columns)
+        data['time'] = pd.to_datetime(data['time'], unit='s')
+        data['change'] = data['close'] - data['open']
+        data['pct_change'] = (data['change'] / data['open']) * 100
+        return data, coin
+    return None, coin
