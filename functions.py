@@ -1,20 +1,20 @@
-import re
 import os
-from serpapi import GoogleSearch
-import requests
-from bs4 import BeautifulSoup
-import pandas as pd
-import time
-from tqdm import tqdm
-from contextlib import nullcontext
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-import torch
-from torch.nn.functional import softmax
-import torch
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import re
+import time
+from datetime import datetime, timedelta
+import numpy as np
+import pandas as pd
+import requests
+import torch
+from audioread.ffdec import ReadTimeoutError
+from bs4 import BeautifulSoup
+from serpapi import GoogleSearch
+from sklearn.model_selection import cross_val_score
+from sklearn.tree import DecisionTreeRegressor
+from torch.nn.functional import softmax
+from tqdm import tqdm
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import CONSTANTS
 from CONSTANTS import *
 
 
@@ -141,3 +141,167 @@ def get_fgi_data():
   else:
     print(f'Couldn\'t do it because response code is {json.status_code}')
     return None
+
+def get_global_market_data():
+    """
+    Fetch overall market data such as total market capitalization, trading volume, and Bitcoin dominance.
+    Purpose: Helps understand the overall health and activity of the cryptocurrency market.
+    """
+    url = f"https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest"
+    headers = {
+        'X-CMC_PRO_API_KEY': CMC_KEY
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        return {
+            'total_market_cap': data['data']['quote']['USD']['total_market_cap'],
+            'total_volume_24h': data['data']['quote']['USD']['total_volume_24h'],
+            'btc_dominance': data['data']['btc_dominance'],
+            'active_cryptocurrencies': data['data']['active_cryptocurrencies']
+        }
+    else:
+        print(f"Failed to fetch global market data: {response.status_code}")
+        return None
+
+def get_tokenomics(coin):
+    """
+    Fetch tokenomics data such as circulating supply and total supply.
+    Purpose: Helps understand the supply dynamics of a coin, which can influence its price.
+    """
+    url = f"https://pro-api.coinmarketcap.com/v1/cryptocurrency/info"
+    headers = {
+        'X-CMC_PRO_API_KEY': CMC_KEY
+    }
+    params = {
+        'symbol': coin
+    }
+    response = requests.get(url, headers=headers, params=params)
+    if response.status_code == 200:
+        data = response.json()
+        supply_data = data['data'][coin]
+        return supply_data
+    else:
+        print(f"Failed to fetch tokenomics for {coin}: {response.status_code}")
+        return None
+
+def myFillNa(df):
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            df[col].fillna(0, inplace=True)
+        elif pd.api.types.is_string_dtype(df[col]) or pd.api.types.is_object_dtype(df[col]):
+            df[col].fillna(CONSTANTS.EMPTY_STRING, inplace=True)
+        else:
+            df[col].fillna(np.nan, inplace=True)
+
+def cv_metrics(model, data, yCol='gradient', v=5, trainingColsPath='training_columns.txt'):
+    model = DecisionTreeRegressor(max_depth=5)
+    trainingCols = open('training_columns.txt', 'r').readlines()
+    trainingCols = [i.strip() for i in trainingCols]
+    assert yCol not in trainingCols, f'{yCol} should not be in trainingCols but was found in it'
+    myFillNa(data)
+    X = pd.get_dummies(data[trainingCols])
+    y = data[yCol]
+    cv_scores = -cross_val_score(model, X, y, cv=10, scoring='neg_root_mean_squared_error')
+    cv_scores = pd.Series(cv_scores)
+    cv_scores.index += 1
+    cv_scores.plot.bar()
+    print(f'CV RMSE: {cv_scores.mean()}')
+    return cv_scores
+
+def setup(coin, targetCol='gradient', closeCol='close'):
+    data = pd.read_csv(fullDataPath(coin))
+    trainingCols = open(TRAINING_COLUMNS, 'r').readlines()
+    trainingCols = [i.strip() for i in trainingCols]
+    setDiff = np.setdiff1d(trainingCols, data.columns)
+    assert np.isin(trainingCols, data.columns).all(), f'{", ".join(setDiff)} not in data'
+    X = data[trainingCols]
+    data[targetCol] = data[closeCol].diff().fillna(0.0)
+    data['TextType'] = data['link'].apply(lambda x: 'tweet' if x == CONSTANTS.EMPTY_STRING else 'newspaper')
+    y = data[targetCol]
+    return data, X, y
+
+def prices(product_id, period=30, granularity=86400, start=None, end=None):
+    """
+    Fetch historical candlestick data for a cryptocurrency pair from now to the specified number of days in the past.
+
+    :param product_id: The product ID for the crypto pair (e.g., 'BTC-USD').
+    :param period: Number of days of historical data to fetch.
+    :param granularity: Desired time slice in seconds (60, 300, 900, 3600, 21600, 86400).
+    :return: DataFrame containing historical data.
+    """
+    if not product_id.endswith('-USD'):
+        product_id += '-USD'
+    product_id = product_id.upper()
+    url = f"https://api.exchange.coinbase.com/products/{product_id}/candles"
+    if start is None and end is None: # get data from specified number of days ago if date bounds are not specified.
+        end = datetime.now()
+        start = end - timedelta(days=period)
+    coin = product_id.split('-')[0]
+    all_data = []
+
+    while start < end:
+        end_slice = min(start + timedelta(seconds=granularity * 300), end)
+        params = {
+            'start': start.isoformat(),
+            'end': end_slice.isoformat(),
+            'granularity': granularity
+        }
+
+        try:
+            response = requests.get(url, params=params)
+        except ConnectionError:
+            print("No internet connection")
+            return None, coin
+        except ReadTimeoutError:
+            print('Your wifi likely doesn\'t allow to access Coinbase API')
+            return None, coin
+
+        if response.status_code == 200:
+            data = response.json()
+            all_data.extend(data)
+        else:
+            print("Failed to fetch data:", response.text)
+            break
+
+        start = end_slice
+
+    if all_data:
+        columns = ['time', 'low', 'high', 'open', 'close', 'volume']
+        data = pd.DataFrame(all_data, columns=columns)
+        data['time'] = pd.to_datetime(data['time'], unit='s')
+        data['change'] = data['close'] - data['open']
+        data['pct_change'] = (data['change'] / data['open']) * 100
+        return data, coin
+    return None, coin
+
+def sequence(column, index):
+    if index < len(column):
+        return column.values[:index].tolist(), column.values[index+1]
+    raise ValueError(f'Index = {index} ≥ Length = {len(column)}')
+
+def padding(sequence, target_length=5, value=0.0):
+    """Pad or truncate sequence to target_length"""
+    if len(sequence) > target_length:
+        return sequence[:target_length]  # Truncate
+    elif len(sequence) < target_length:
+        return sequence + [value] * (target_length - len(sequence))  # Pad
+    return sequence  # Already correct length
+
+def compute_rsi(series, window=14):
+    delta = series.diff()
+    # Separate positive and negative gains
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+
+    # Simple moving average over 'window' periods for gains/losses
+    avg_gain = gain.rolling(window=window, min_periods=window).mean()
+    avg_loss = loss.rolling(window=window, min_periods=window).mean()
+
+    # Alternatively, one can use exponential weighting:
+    # avg_gain = gain.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
+    # avg_loss = loss.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
+
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
