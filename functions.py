@@ -101,7 +101,6 @@ def newspapers_from_queries(coin, queries_path):
         query = [f'{coin} {q}' for q in query]
         queries = query
 
-    PATH = f'{coin}_newspapers.csv'
     newspapers = pd.DataFrame()
     if os.path.exists(PATH):
         newspapers = pd.read_csv(PATH)
@@ -132,7 +131,8 @@ def newspaper_sentiment_pipeline(coin, newspaper_path=None, queries_path='querie
     df = pd.read_csv(fullDataPath(coin))
     df['time'] = pd.to_datetime(df['time'])  # Convert 'time' to datetime
     coin_newspapers['date'] = pd.to_datetime(coin_newspapers['date'])  # Convert 'date' to datetime
-    merged_df = pd.merge(df, coin_newspapers, left_on='time', right_on='date', how='inner')
+    merged_df = pd.merge(df, coin_newspapers, left_on='time', right_on='date', how='left')
+    myFillNa(merged_df)
     merged_df.to_csv(fullDataPath(coin), index=False)
 
     return merged_df
