@@ -142,6 +142,49 @@ def get_fgi_data():
     print(f'Couldn\'t do it because response code is {json.status_code}')
     return None
 
+def get_global_market_data():
+    """
+    Fetch overall market data such as total market capitalization, trading volume, and Bitcoin dominance.
+    Purpose: Helps understand the overall health and activity of the cryptocurrency market.
+    """
+    url = f"https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest"
+    headers = {
+        'X-CMC_PRO_API_KEY': CMC_KEY
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        return {
+            'total_market_cap': data['data']['quote']['USD']['total_market_cap'],
+            'total_volume_24h': data['data']['quote']['USD']['total_volume_24h'],
+            'btc_dominance': data['data']['btc_dominance'],
+            'active_cryptocurrencies': data['data']['active_cryptocurrencies']
+        }
+    else:
+        print(f"Failed to fetch global market data: {response.status_code}")
+        return None
+
+def get_tokenomics(coin):
+    """
+    Fetch tokenomics data such as circulating supply and total supply.
+    Purpose: Helps understand the supply dynamics of a coin, which can influence its price.
+    """
+    url = f"https://pro-api.coinmarketcap.com/v1/cryptocurrency/info"
+    headers = {
+        'X-CMC_PRO_API_KEY': CMC_KEY
+    }
+    params = {
+        'symbol': coin
+    }
+    response = requests.get(url, headers=headers, params=params)
+    if response.status_code == 200:
+        data = response.json()
+        supply_data = data['data'][coin]
+        return supply_data
+    else:
+        print(f"Failed to fetch tokenomics for {coin}: {response.status_code}")
+        return None
+
 def myFillNa(df):
     for col in df.columns:
         if pd.api.types.is_numeric_dtype(df[col]):
@@ -231,3 +274,34 @@ def prices(product_id, period=30, granularity=86400, start=None, end=None):
         data['pct_change'] = (data['change'] / data['open']) * 100
         return data, coin
     return None, coin
+
+def sequence(column, index):
+    if index < len(column):
+        return column.values[:index].tolist(), column.values[index+1]
+    raise ValueError(f'Index = {index} ≥ Length = {len(column)}')
+
+def padding(sequence, target_length=5, value=0.0):
+    """Pad or truncate sequence to target_length"""
+    if len(sequence) > target_length:
+        return sequence[:target_length]  # Truncate
+    elif len(sequence) < target_length:
+        return sequence + [value] * (target_length - len(sequence))  # Pad
+    return sequence  # Already correct length
+
+def compute_rsi(series, window=14):
+    delta = series.diff()
+    # Separate positive and negative gains
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+
+    # Simple moving average over 'window' periods for gains/losses
+    avg_gain = gain.rolling(window=window, min_periods=window).mean()
+    avg_loss = loss.rolling(window=window, min_periods=window).mean()
+
+    # Alternatively, one can use exponential weighting:
+    # avg_gain = gain.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
+    # avg_loss = loss.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
+
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
