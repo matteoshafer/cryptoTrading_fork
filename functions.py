@@ -24,46 +24,50 @@ def preprocess(str):
     preprocessed = re.sub(pattern, '', str).upper()
     return preprocessed
 
+def article_metadata(query):
+    params = {
+        "api_key": SERPAPI_KEY,
+        "engine": "google_news",
+        "hl": "en",
+        "gl": "us",
+        "q": query
+    }
+
+    search = GoogleSearch(params)
+    results = search.get_dict()
+    article_metadata = results['news_results']
+    return article_metadata
+
+
 def get_newspapers(query):
-  params = {
-    "api_key": "d8b42ca90077ec59802d53ad3d55e7e05d38ebac54426fbfa8913b8f40f68e24",
-    "engine": "google_news",
-    "hl": "en",
-    "gl": "us",
-    "q": query
-  }
+    articles = article_metadata(query)
+    article_df = pd.DataFrame(articles)
+    if 'stories' in article_df.columns:
+        header = pd.json_normalize(article_df['stories'][0])
+        intersection = np.intersect1d(article_df.columns, header.columns)
+        article_df = pd.concat([header[intersection], article_df[intersection]])
+        article_df = article_df.dropna(subset=['date'])
 
-  search = GoogleSearch(params)
-  results = search.get_dict()
-  article_metadata = results['news_results']
-  newspapers = []
-  MISSING = '-'
+    texts = []
+    for index, row in tqdm(article_df.iterrows(), total=len(article_df)):
 
-  for article in tqdm(article_metadata):
-      article_link = article.get('link', MISSING)
-      article_title = article.get('title', MISSING)
-      article_publication_date = article.get('date', MISSING)
-      try:
-          time.sleep(5)
-          response = requests.get(article_link, timeout=30)
-          response.raise_for_status()
-          soup = BeautifulSoup(response.content, 'html.parser')
-          article_text = ""
-          for paragraph in soup.find_all('p'):
-              article_text += paragraph.get_text() + "\n"
+        text = ""
+        try:
+            time.sleep(SLEEP)
+            response = requests.get(row['link'], timeout=30)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+            for paragraph in soup.find_all('p'):
+                text += paragraph.get_text() + '\n'
+            if text.strip() == '':
+                text = row['title']
+        except:
+            text = row['title']
 
-          items = {
-              'title': article_title,
-              'date': article_publication_date,
-              'link': article_link,
-              'text': article_text,
-          }
-          newspapers.append(items)
-      except requests.exceptions.RequestException as e:
-          pass
-      except Exception as e:
-          pass
-  return pd.DataFrame(newspapers)
+        texts.append(text)
+
+    article_df['text'] = texts
+    return article_df
 
 def sentimentAnalysis(newspapers_df, NEGATIVE, NEUTRAL, POSITIVE):
     """STEP 2"""
@@ -97,7 +101,6 @@ def newspapers_from_queries(coin, queries_path):
         query = [f'{coin} {q}' for q in query]
         queries = query
 
-    PATH = f'{coin}_newspapers.csv'
     newspapers = pd.DataFrame()
     if os.path.exists(PATH):
         newspapers = pd.read_csv(PATH)
@@ -108,15 +111,19 @@ def newspapers_from_queries(coin, queries_path):
     newspapers.to_csv(PATH)
     return newspapers
 
-def newspaper_sentiment_pipeline(coin, queries_path='queries.txt', NEGATIVE=-1, NEUTRAL=0, POSITIVE=1):
+def newspaper_sentiment_pipeline(coin, newspaper_path=None, queries_path='queries.txt', NEGATIVE=-1, NEUTRAL=0, POSITIVE=1):
     # Step 1: get newspapers from queries
-    nfq = newspapers_from_queries(coin, queries_path)
+    nfq = None
+    try:
+        nfq = pd.read_csv(newspaper_path)
+    except:
+        nfq = newspapers_from_queries(coin, queries_path)
     
     # Step 2: sentiment analysis
-    nfs = sentimentAnalysis(nfq, NEGATIVE, NEUTRAL, POSITIVE)
+    sentimentAnalysis(nfq, NEGATIVE, NEUTRAL, POSITIVE)
     
     # Step 3: Load in the newspaper data (with sentiment) and preprocess it
-    coin_newspapers = pd.read_csv(f'{coin}_newspapers.csv')
+    coin_newspapers = pd.read_csv(f'newspapers/{coin}_newspapers.csv')
     coin_newspapers['date'] = pd.to_datetime(coin_newspapers['date'], format="%m/%d/%Y, %I:%M %p, %z UTC")
     coin_newspapers['date'] = coin_newspapers['date'].dt.date
     
@@ -124,8 +131,11 @@ def newspaper_sentiment_pipeline(coin, queries_path='queries.txt', NEGATIVE=-1, 
     df = pd.read_csv(fullDataPath(coin))
     df['time'] = pd.to_datetime(df['time'])  # Convert 'time' to datetime
     coin_newspapers['date'] = pd.to_datetime(coin_newspapers['date'])  # Convert 'date' to datetime
-    merged_df = pd.merge(df, coin_newspapers, left_on='time', right_on='date', how='inner')
+    merged_df = pd.merge(df, coin_newspapers, left_on='time', right_on='date', how='left')
+    myFillNa(merged_df)
     merged_df.to_csv(fullDataPath(coin), index=False)
+
+    return merged_df
 
 def fullDataPath(coin):
     return f'fulldata/{coin}_df.csv'
@@ -298,10 +308,10 @@ def compute_rsi(series, window=14):
     avg_gain = gain.rolling(window=window, min_periods=window).mean()
     avg_loss = loss.rolling(window=window, min_periods=window).mean()
 
-    # Alternatively, one can use exponential weighting:
-    # avg_gain = gain.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
-    # avg_loss = loss.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
-
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
+
+if __name__ == '__main__':
+    item = get_newspapers('ETH crypto coin news over the last one year')
+    print(item)
