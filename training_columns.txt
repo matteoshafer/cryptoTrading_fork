@@ -6,3 +6,4 @@ OBV
 BB_Lower
 BB_Middle
 BB_Upper
+avg_sentiment
