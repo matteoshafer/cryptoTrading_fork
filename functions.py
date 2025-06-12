@@ -286,6 +286,8 @@ def prices(product_id, period=30, granularity=86400, start=None, end=None):
     return None, coin
 
 def sequence(column, index):
+    if index == len(column)-1:
+        return column.values[:index].tolist(), column.values[-1]
     if index < len(column):
         return column.values[:index].tolist(), column.values[index+1]
     raise ValueError(f'Index = {index} ≥ Length = {len(column)}')
