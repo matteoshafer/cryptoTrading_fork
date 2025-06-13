@@ -3,6 +3,7 @@ import torch.nn as nn
 import math
 import numpy as np
 import pandas as pd
+from js2py_.internals.constructors.jsmath import CONSTANTS
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
@@ -40,8 +41,17 @@ class MultiHeadAttention(nn.Module):
 
     def scaled_dot_product_attention(self, Q, K, V, mask=None):
         attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
+
+        # Apply mask if provided (mask should be boolean: True=valid, False=masked)
         if mask is not None:
-            attn_scores = attn_scores.masked_fill(mask == 0, -1e9)
+            # Expand mask to match attention scores dimensions
+            if len(mask.shape) == 2:  # (batch_size, seq_length)
+                mask = mask.unsqueeze(1).unsqueeze(1)  # (batch_size, 1, 1, seq_length)
+                mask = mask.expand(-1, -1, attn_scores.size(-2), -1)
+
+            # Apply mask: False positions get -1e9
+            attn_scores = attn_scores.masked_fill(~mask, CONSTANTS.FILL)  # Note the ~ (NOT operator)
+
         attn_probs = torch.softmax(attn_scores, dim=-1)
         output = torch.matmul(attn_probs, V)
         return output
@@ -111,12 +121,12 @@ class TransformerEncoder(nn.Module):
 class BaseTransformer(nn.Module):
     def __init__(self, d_model=512, num_heads=8, num_layers=6,
                  d_ff=2048, max_seq_length=5000, dropout=0.1, output_dim=1,
-                 learning_rate=1e-4, batch_size=32):
+                 learning_rate=1e-4, batch_size=32, mask_value=0.0):
         super(BaseTransformer, self).__init__()
 
-        # Model architecture - input_dim will be set dynamically
         self.d_model = d_model
-        self.input_projection = None  # Will be created when we see the data
+        self.mask_value = mask_value  # Value to mask (0.0 for padding)
+        self.input_projection = None
         self.positional_encoding = PositionalEncoding(d_model, max_seq_length)
         self.transformer_encoder = TransformerEncoder(
             num_layers, d_model, num_heads, d_ff, dropout
@@ -129,9 +139,19 @@ class BaseTransformer(nn.Module):
         self.batch_size = batch_size
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.to(self.device)
-
-        # Training history
         self.history = {'loss': []}
+
+    def create_padding_mask(self, x):
+        """Create mask for padded positions (True = valid, False = padded)"""
+        # x shape: (batch_size, seq_length) or (batch_size, seq_length, features)
+        if len(x.shape) == 3:
+            # For 3D input, check if entire feature vector is zeros
+            mask = (x != self.mask_value).any(dim=-1)  # (batch_size, seq_length)
+        else:
+            # For 2D input
+            mask = (x != self.mask_value)  # (batch_size, seq_length)
+
+        return mask
 
     def _create_input_projection(self, input_dim):
         """Create input projection layer based on data dimensions"""
@@ -321,7 +341,7 @@ class BaseTransformer(nn.Module):
         self.train()
         return total_val_loss / num_batches
 
-    def predict(self, X):
+    def predict(self, X, scaler=None):
         """Make predictions on new data"""
         self.eval()
 
@@ -336,7 +356,10 @@ class BaseTransformer(nn.Module):
         with torch.no_grad():
             predictions = self(X_tensor)
 
-        return predictions.cpu().numpy()
+        value = predictions.cpu().numpy()
+        if scaler is not None:
+            value = scaler.inverse_transform(value)
+        return value
 
     def score(self, X, y):
         """Calculate R² score"""

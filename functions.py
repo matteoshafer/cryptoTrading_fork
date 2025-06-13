@@ -292,12 +292,12 @@ def sequence(column, index):
         return column.values[:index].tolist(), column.values[index+1]
     raise ValueError(f'Index = {index} ≥ Length = {len(column)}')
 
-def padding(sequence, target_length=5, value=0.0):
+def padding(sequence, target_length=5):
     """Pad or truncate sequence to target_length"""
     if len(sequence) > target_length:
         return sequence[:target_length]  # Truncate
     elif len(sequence) < target_length:
-        return sequence + [value] * (target_length - len(sequence))  # Pad
+        return sequence + [CONSTANTS.FILL] * (target_length - len(sequence))  # Pad
     return sequence  # Already correct length
 
 def compute_rsi(series, window=14):
@@ -313,7 +313,3 @@ def compute_rsi(series, window=14):
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
-
-if __name__ == '__main__':
-    item = get_newspapers('ETH crypto coin news over the last one year')
-    print(item)
