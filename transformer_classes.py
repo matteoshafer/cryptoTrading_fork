@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 import numpy as np
 import pandas as pd
-from js2py_.internals.constructors.jsmath import CONSTANTS
+from CONSTANTS import FILL
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
@@ -50,7 +50,7 @@ class MultiHeadAttention(nn.Module):
                 mask = mask.expand(-1, -1, attn_scores.size(-2), -1)
 
             # Apply mask: False positions get -1e9
-            attn_scores = attn_scores.masked_fill(~mask, CONSTANTS.FILL)  # Note the ~ (NOT operator)
+            attn_scores = attn_scores.masked_fill(~mask, self.mask_value)  # Note the ~ (NOT operator)
 
         attn_probs = torch.softmax(attn_scores, dim=-1)
         output = torch.matmul(attn_probs, V)
@@ -306,7 +306,7 @@ class BaseTransformer(nn.Module):
                     self.history['val_loss'] = []
                 self.history['val_loss'].append(val_loss)
 
-            # Print progress
+            # early stopping if validation loss
             trainLosses.append(avg_loss)
             validationLosses.append(val_loss)
 

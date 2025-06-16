@@ -4,5 +4,6 @@ SMA_50
 Volume_MA_20
 OBV
 BB_Lower
-BB_Middle
 BB_Upper
+value
+value_classification

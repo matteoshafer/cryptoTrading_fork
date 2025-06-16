@@ -140,8 +140,8 @@ def newspaper_sentiment_pipeline(coin, newspaper_path=None, queries_path='querie
 def fullDataPath(coin):
     return f'fulldata/{coin}_df.csv'
 
-def get_fgi_data():
-  url = f'https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical?CMC_PRO_API_KEY={CMC_KEY}&limit={LIMIT}'
+def get_fgi_data(df):
+  url = f'https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical?CMC_PRO_API_KEY={CMC_KEY}&limit={min(len(df), 500)}'
   json = requests.get(url)
   if json.status_code == 200:
       data = json.json()
@@ -149,7 +149,7 @@ def get_fgi_data():
       fgi_df['timestamp'] = pd.to_datetime(fgi_df['timestamp'], unit='s')
       return fgi_df
   else:
-    print(f'Couldn\'t do it because response code is {json.status_code}')
+    print("Couldn\'t get FGI data with status code = " + str(json.status_code))
     return None
 
 def get_global_market_data():
@@ -313,3 +313,12 @@ def compute_rsi(series, window=14):
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
+
+def normalize_sequences(df_column, scaler):
+    normalized_sequences = []
+    for seq in df_column:
+        # Convert list to array and normalize
+        seq_array = np.array(seq).reshape(-1, 1)
+        normalized_seq = scaler.fit_transform(seq_array).flatten()
+        normalized_sequences.append(normalized_seq.tolist())
+    return normalized_sequences
