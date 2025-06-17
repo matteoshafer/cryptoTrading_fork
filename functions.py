@@ -205,14 +205,13 @@ def myFillNa(df):
             df[col].fillna(np.nan, inplace=True)
 
 def cv_metrics(model, data, yCol='gradient', v=5, trainingColsPath='training_columns.txt'):
-    model = DecisionTreeRegressor(max_depth=5)
-    trainingCols = open('training_columns.txt', 'r').readlines()
+    trainingCols = open(trainingColsPath, 'r').readlines()
     trainingCols = [i.strip() for i in trainingCols]
     assert yCol not in trainingCols, f'{yCol} should not be in trainingCols but was found in it'
     myFillNa(data)
     X = pd.get_dummies(data[trainingCols])
     y = data[yCol]
-    cv_scores = -cross_val_score(model, X, y, cv=10, scoring='neg_root_mean_squared_error')
+    cv_scores = -cross_val_score(model, X, y, cv=v, scoring='neg_root_mean_squared_error')
     cv_scores = pd.Series(cv_scores)
     cv_scores.index += 1
     cv_scores.plot.bar()
