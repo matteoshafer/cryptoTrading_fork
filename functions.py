@@ -10,6 +10,7 @@ from audioread.ffdec import ReadTimeoutError
 from bs4 import BeautifulSoup
 from serpapi import GoogleSearch
 from sklearn.model_selection import cross_val_score
+from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeRegressor
 from torch.nn.functional import softmax
 from tqdm import tqdm
@@ -316,8 +317,124 @@ def compute_rsi(series, window=14):
 def normalize_sequences(df_column, scaler):
     normalized_sequences = []
     for seq in df_column:
-        # Convert list to array and normalize
         seq_array = np.array(seq).reshape(-1, 1)
         normalized_seq = scaler.fit_transform(seq_array).flatten()
         normalized_sequences.append(normalized_seq.tolist())
     return normalized_sequences
+
+def dataSetup(data):
+    # Convert time to datetime if it's not already
+    data['time'] = pd.to_datetime(data['time'], errors='coerce')
+    data = data.dropna(subset=['time'])
+    data['date'] = data['time'].dt.date
+
+    # Group by date and aggregate values (one row per day)
+    # Hard coded change later
+    daily_data = (
+        data
+        .groupby('date')
+        .agg(
+            close=('close', 'last'),
+            avg_sentiment=('score', 'mean'),
+            tweet_count=('score', 'count'),
+            volume=('volume', 'last'),
+            BB_Lower=('BB_Lower', 'last'),
+            BB_Middle=('BB_Middle', 'last'),
+            BB_Upper=('BB_Upper', 'last'),
+            SMA_50=('SMA_50', 'last'),
+            Volume_MA_20=('Volume_MA_20', 'last'),
+            value=('value', 'last'),
+            value_classification=('value_classification', 'last'),
+            OBV=('OBV', 'last')
+        )
+        .reset_index()
+    )
+
+    # Convert date back to datetime format if needed and sort by time
+    daily_data['time'] = pd.to_datetime(daily_data['date'])
+    daily_data = daily_data.drop('date', axis=1)
+    daily_data = daily_data.sort_values('time')
+    daily_data.set_index('time', inplace=True)
+    daily_data['gradient'] = daily_data['close'].diff().fillna(0.0)
+    return daily_data
+
+
+def predict_sequence(model, price, starter, scaler, sequence_length=30, total_length=365):
+    """
+    Generate a sequence of predictions autoregressively
+
+    Args:
+        model: Your trained transformer
+        initial_price: The last known Bitcoin price
+        sequence_length: How many future prices to predict
+        total_length: Total input length (365 in your case)
+    """
+
+    # Start with the initial price
+    current_sequence = starter.values.tolist()
+    current_sequence.append(price)
+    current_sequence = current_sequence[-total_length:]  # Keep only the last 'total_length' prices
+
+    # Generate predictions one by one
+    for i in range(sequence_length):
+        # Create input array: current sequence + padding
+        input_data = padding(current_sequence, target_length=total_length)
+
+        # Create DataFrame for model input
+        input_df = pd.DataFrame({'sequences': [input_data]})
+        next_prediction = model.predict(input_df)[0][0]  # Extract scalar value
+        next_prediction = scaler.inverse_transform([[next_prediction]])[0][0]
+
+        # Add prediction to sequence
+        current_sequence.append(next_prediction)
+        current_sequence = current_sequence[-total_length:]  # Keep only the last 'total_length' predictions
+
+    return current_sequence[1:(sequence_length + 1)]
+
+
+def transformerDataSetup(daily_data, col='close'):
+    seqs = []
+    nexts = []
+    for i in range(len(daily_data)):
+        try:
+            seq, next = sequence(daily_data[col], i)
+            seqs.append(seq)
+            nexts.append(next)
+        except Exception as e:
+            print(f'Error at {i} Exception:', e)
+
+    seqs = [padding(seq, len(daily_data)) for seq in seqs]
+    daily_data[col] = seqs
+    daily_data['next'] = nexts
+    return daily_data
+
+
+def transformerXTrainYTrain(daily_data, testSize):
+    train_data = daily_data.iloc[:testSize]
+    test_data = daily_data.iloc[testSize:]
+    X_train = train_data[['sequence']]
+    y_train = train_data['next']
+    X_test = test_data[['sequence']]
+    y_test = test_data['next']
+    return X_train, X_test, y_train, y_test
+
+
+def normalize(X_train, X_test, y_train, y_test):
+    # Create scalers for both sequences and targets
+    sequence_scaler = StandardScaler()
+    target_scaler = StandardScaler()
+
+    # Normalize target values
+    y_train_scaled = target_scaler.fit_transform(y_train.values.reshape(-1, 1)).flatten()
+    y_test_scaled = target_scaler.transform(y_test.values.reshape(-1, 1)).flatten()
+
+    # Apply normalization to sequence data
+    X_train_norm = pd.DataFrame({
+        'sequences': normalize_sequences(X_train.iloc[:, 0], sequence_scaler)
+    })
+    X_test_norm = pd.DataFrame({
+        'sequences': normalize_sequences(X_test.iloc[:, 0], sequence_scaler)
+    })
+    y_train_norm = pd.Series(y_train_scaled)
+    y_test_norm = pd.Series(y_test_scaled)
+    return X_train_norm, X_test_norm, y_train_norm, y_test_norm, sequence_scaler, target_scaler

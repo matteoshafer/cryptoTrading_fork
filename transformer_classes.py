@@ -7,6 +7,7 @@ from CONSTANTS import FILL
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
+from functions import *
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_seq_length=5000):
@@ -250,6 +251,7 @@ class BaseTransformer(nn.Module):
         """
         # Prepare data
         X_tensor, y_tensor = self._prepare_data(X_train, y_train)
+        self.sequence_length = X_tensor.shape[1]
 
         if verbose:
             print(f"Data shapes - X: {X_tensor.shape}, y: {y_tensor.shape}")
@@ -322,7 +324,6 @@ class BaseTransformer(nn.Module):
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.title('Training and Validation Losses')
-
         return self
 
     def _validate(self, val_loader, criterion):
@@ -361,6 +362,19 @@ class BaseTransformer(nn.Module):
             value = scaler.inverse_transform(value)
         return value
 
+    def predict_value(self, starter, scaler=None):
+        new = starter
+        new, next = sequence(new, len(new) - 1)
+        new = pd.DataFrame({'sequences': [new]})
+        if scaler:
+            new = pd.DataFrame({
+                'sequences': normalize_sequences(new.iloc[:, 0], scaler)
+            })
+        else:
+            new = pd.DataFrame({'sequences': [new]})
+        return self.predict(new, scaler)[0, 0]
+
+
     def score(self, X, y):
         """Calculate R² score"""
         predictions = self.predict(X)
@@ -374,7 +388,6 @@ class BaseTransformer(nn.Module):
         ss_res = np.sum((y_true - predictions) ** 2)
         ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
         r2 = 1 - (ss_res / ss_tot)
-
         return r2
 
     def rmse(self, X, y):
