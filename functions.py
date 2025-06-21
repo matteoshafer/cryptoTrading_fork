@@ -40,7 +40,7 @@ def article_metadata(query):
     return article_metadata
 
 
-def get_newspapers(query):
+def get_newspapers(query, existing_df=None):
     articles = article_metadata(query)
     article_df = pd.DataFrame(articles)
     if 'stories' in article_df.columns:
@@ -50,6 +50,10 @@ def get_newspapers(query):
         article_df = article_df.dropna(subset=['date'])
 
     texts = []
+    if existing_df:
+        links = existing_df['link'][existing_df['link'] != CONSTANTS.EMPTY_STRING]
+        article_df = article_df[~article_df['link'].isin(links)]
+
     for index, row in tqdm(article_df.iterrows(), total=len(article_df)):
 
         text = ""
@@ -94,7 +98,7 @@ def get_sentiment(text):
     return predicted_label, probabilities.tolist()[0] # return predicted label and associated probabilities
 
 
-def newspapers_from_queries(coin, queries_path):
+def newspapers_from_queries(coin, queries_path, existing_df):
     """STEP 1"""
     queries = None
     with open(queries_path) as queries:
@@ -130,13 +134,19 @@ def newspaper_sentiment_pipeline(coin, newspaper_path=None, queries_path='querie
     
     # Step 4: Merge the newspaper data with the full/market data
     df = pd.read_csv(fullDataPath(coin))
-    df['time'] = pd.to_datetime(df['time'])  # Convert 'time' to datetime
-    coin_newspapers['date'] = pd.to_datetime(coin_newspapers['date'])  # Convert 'date' to datetime
-    merged_df = pd.merge(df, coin_newspapers, left_on='time', right_on='date', how='left')
-    myFillNa(merged_df)
-    merged_df.to_csv(fullDataPath(coin), index=False)
+    df['time'] = pd.to_datetime(df['time'])
+    coin_newspapers['date'] = pd.to_datetime(coin_newspapers['date'])
 
-    return merged_df
+    if not nfq.columns.isin(df.columns).any():
+        df = pd.merge(df, coin_newspapers, left_on='time', right_on='date', how='left')
+        myFillNa(df)
+    else: # have newspaper columns in dataset
+        pass
+
+
+
+    df.to_csv(fullDataPath(coin), index=False)
+    return df
 
 def fullDataPath(coin):
     return f'fulldata/{coin}_df.csv'
