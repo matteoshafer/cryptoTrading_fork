@@ -40,7 +40,7 @@ def article_metadata(query):
     return article_metadata
 
 
-def get_newspapers(query):
+def get_newspapers(query, existing_links):
     articles = article_metadata(query)
     article_df = pd.DataFrame(articles)
     if 'stories' in article_df.columns:
@@ -49,9 +49,9 @@ def get_newspapers(query):
         article_df = pd.concat([header[intersection], article_df[intersection]])
         article_df = article_df.dropna(subset=['date'])
 
+    article_df = article_df[~article_df['link'].isin(existing_links)]
     texts = []
     for index, row in tqdm(article_df.iterrows(), total=len(article_df)):
-
         text = ""
         try:
             time.sleep(SLEEP)
@@ -74,9 +74,13 @@ def sentimentAnalysis(newspapers_df, NEGATIVE, NEUTRAL, POSITIVE):
     """STEP 2"""
     newspapers_df['things'] = newspapers_df['text'].astype(str).apply(get_sentiment)
     newspapers_df['sentiment'] = newspapers_df['things'].apply(lambda x: x[0])
-    newspapers_df['score'] = newspapers_df['things'].apply(lambda x: 100 * (NEGATIVE * x[1][0] + NEUTRAL * x[1][1] + POSITIVE * x[1][2]))
+    newspapers_df['score'] = newspapers_df['things'].apply(lambda x: sentiment_score(x[1], NEGATIVE, NEUTRAL, POSITIVE, MULTIPLIER=100))
     newspapers_df.drop('things', axis=1, inplace=True)
     return newspapers_df
+
+def sentiment_score(x, NEGATIVE=-1, NEUTRAL=0, POSITIVE=1, MULTIPLIER=100):
+    return MULTIPLIER * (NEGATIVE * x[0] + NEUTRAL * x[1] + POSITIVE * x[2])
+
 
 def get_sentiment(text):
     """HELPER FUNCTION"""
@@ -103,10 +107,12 @@ def newspapers_from_queries(coin, queries_path):
         queries = query
 
     newspapers = pd.DataFrame()
+    links = []
     if os.path.exists(PATH):
         newspapers = pd.read_csv(PATH)
+        links = newspapers['link'].tolist()
     for q in tqdm(queries):
-        stuff = get_newspapers(q)
+        stuff = get_newspapers(q, links)
         newspapers = pd.concat([newspapers, stuff], ignore_index=True)
 
     newspapers.to_csv(PATH)
@@ -121,12 +127,14 @@ def newspaper_sentiment_pipeline(coin, newspaper_path=None, queries_path='querie
         nfq = newspapers_from_queries(coin, queries_path)
     
     # Step 2: sentiment analysis
-    sentimentAnalysis(nfq, NEGATIVE, NEUTRAL, POSITIVE)
+    nfq = sentimentAnalysis(nfq, NEGATIVE, NEUTRAL, POSITIVE)
     
     # Step 3: Load in the newspaper data (with sentiment) and preprocess it
     coin_newspapers = pd.read_csv(f'newspapers/{coin}_newspapers.csv')
     coin_newspapers['date'] = pd.to_datetime(coin_newspapers['date'], format="%m/%d/%Y, %I:%M %p, %z UTC")
     coin_newspapers['date'] = coin_newspapers['date'].dt.date
+    coin_newspapers['score'] = nfq['score']
+    coin_newspapers['sentiment'] = nfq['sentiment']
     
     # Step 4: Merge the newspaper data with the full/market data
     df = pd.read_csv(fullDataPath(coin))
@@ -438,3 +446,7 @@ def normalize(X_train, X_test, y_train, y_test):
     y_train_norm = pd.Series(y_train_scaled)
     y_test_norm = pd.Series(y_test_scaled)
     return X_train_norm, X_test_norm, y_train_norm, y_test_norm, sequence_scaler, target_scaler
+
+if __name__ == '__main__':
+    cn = newspaper_sentiment_pipeline(COIN, newspaper_path=None, queries_path='queries.txt')
+    print(cn['score'].describe())
