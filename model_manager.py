@@ -562,11 +562,13 @@ class ModelManager:
             for col in pred_change_cols:
                 if col == 'sentiment_z':
                     # Convert sentiment to return proxy
-                    pred_returns.append(signals_df[col] * 0.01)  # Scale sentiment
+                    pred_returns.append((signals_df[col] * 0.01).values)  # Scale sentiment
                 else:
-                    pred_returns.append(signals_df[col] / signals_df['P_t'])
-            
-            signals_df['predicted_return'] = pd.DataFrame(pred_returns).T.mean(axis=1)
+                    pred_returns.append((signals_df[col] / signals_df['P_t']).values)
+
+            # Stack as numpy array to avoid index alignment issues, then average across models
+            pred_returns_arr = np.vstack(pred_returns)  # shape: (n_models, n_samples)
+            signals_df['predicted_return'] = pred_returns_arr.mean(axis=0)
         else:
             signals_df['predicted_return'] = 0.0
         
