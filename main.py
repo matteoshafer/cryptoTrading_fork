@@ -278,20 +278,36 @@ def backtest_strategy(result_df: pd.DataFrame, initial_capital: float = 10000.0)
 
 
 def main():
-    """Main entry point for the trading strategy system."""
+    """Main entry point for the trading strategy system.
+    
+    Usage:
+        python main.py [COIN] [START_DATE] [END_DATE]
+        
+    Examples:
+        python main.py                    # Uses default coin (ETH), all data
+        python main.py BTC                # Analyze BTC, all data
+        python main.py BTC 2024-12-01     # Analyze BTC from Dec 1, 2024 to end
+        python main.py BTC 2024-12-01 2024-12-31  # Analyze BTC for December 2024
+    """
     import sys
     
-    # Get coin from command line or use default
+    # Parse command line arguments
     coin = sys.argv[1] if len(sys.argv) > 1 else COIN
+    start_date = sys.argv[2] if len(sys.argv) > 2 else None
+    end_date = sys.argv[3] if len(sys.argv) > 3 else None
     
     print("="*60)
     print("CRYPTOCURRENCY TRADING STRATEGY SYSTEM")
     print("="*60)
     print(f"Analyzing: {coin}")
+    if start_date:
+        print(f"Start date: {start_date}")
+    if end_date:
+        print(f"End date: {end_date}")
     print()
     
     # Run trading strategy
-    result_df = run_trading_strategy(coin=coin, verbose=True)
+    result_df = run_trading_strategy(coin=coin, start_date=start_date, end_date=end_date, verbose=True)
     
     if not result_df.empty:
         # Run backtest
@@ -303,11 +319,38 @@ def main():
         print("="*50)
         for key, value in backtest_results.items():
             if key != 'trades':
-                print(f"{key}: {value}")
+                if isinstance(value, float):
+                    if 'return' in key.lower() or 'rate' in key.lower():
+                        print(f"{key}: {value*100:.2f}%")
+                    elif 'capital' in key.lower():
+                        print(f"{key}: ${value:,.2f}")
+                    else:
+                        print(f"{key}: {value:.4f}")
+                else:
+                    print(f"{key}: {value}")
         print("="*50)
         
+        # Show detailed trades if any
+        trades = backtest_results.get('trades', [])
+        if trades:
+            print("\n" + "="*50)
+            print("TRADE LOG")
+            print("="*50)
+            for i, trade in enumerate(trades, 1):
+                print(f"\nTrade {i}:")
+                print(f"  Date: {trade['date']}")
+                print(f"  Action: {trade['action']}")
+                print(f"  Price: ${trade['price']:,.2f}")
+                print(f"  Shares: {trade['shares']:.6f}")
+                if 'return_pct' in trade:
+                    profit_loss = trade['shares'] * trade['price'] - (trade['shares'] * trade['price'] / (1 + trade['return_pct']))
+                    print(f"  Return: {trade['return_pct']*100:.2f}%")
+                    print(f"  Profit/Loss: ${profit_loss:,.2f}")
+            print("="*50)
+        
         # Save results
-        output_file = f'{coin}_trading_signals.csv'
+        date_suffix = f"_{start_date}_{end_date}" if (start_date and end_date) else (f"_{start_date}" if start_date else "")
+        output_file = f'{coin}_trading_signals{date_suffix}.csv'
         result_df.to_csv(output_file)
         print(f"\nResults saved to {output_file}")
     else:
