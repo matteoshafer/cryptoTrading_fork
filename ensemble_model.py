@@ -143,9 +143,15 @@ class EnsembleModel:
                 # No position - check buy conditions
                 buy_condition_1 = predicted_return > self.buy_threshold_return
                 buy_condition_2 = bull_count >= self.buy_min_bull_count
-                buy_condition_3 = current_price > sma20
+                buy_condition_3 = current_price > sma20 if not pd.isna(sma20) else True  # Make SMA20 optional if NaN
                 
-                if buy_condition_1 and buy_condition_2 and buy_condition_3:
+                # If thresholds are very low (0 or 1), be more lenient - ignore SMA20 and return threshold
+                if self.buy_min_bull_count <= 1 and self.buy_threshold_return <= 0:
+                    should_buy = buy_condition_2  # Only require bull_count
+                else:
+                    should_buy = buy_condition_1 and buy_condition_2 and buy_condition_3
+                
+                if should_buy:
                     # Open new position
                     entry_index = idx
                     entry_price = current_price

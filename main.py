@@ -93,7 +93,11 @@ def get_training_columns() -> list:
 def run_trading_strategy(coin: str = None, 
                         start_date: str = None, 
                         end_date: str = None,
-                        verbose: bool = True) -> pd.DataFrame:
+                        verbose: bool = True,
+                        buy_min_bull_count: int = 1,
+                        buy_threshold_return: float = 0.0,
+                        sell_max_bull_count: int = 0,
+                        sell_threshold_return: float = 0.0) -> pd.DataFrame:
     """
     Run the complete trading strategy with all models and ensemble.
     
@@ -102,6 +106,10 @@ def run_trading_strategy(coin: str = None,
         start_date: Start date for analysis (YYYY-MM-DD format)
         end_date: End date for analysis (YYYY-MM-DD format)
         verbose: Whether to print progress information
+        buy_min_bull_count: Minimum number of bullish models for buy signal (default: 3)
+        buy_threshold_return: Minimum predicted return for buy signal (default: 0.002 = 0.2%)
+        sell_max_bull_count: Maximum number of bullish models for sell signal (default: 2)
+        sell_threshold_return: Maximum predicted return for sell signal (default: -0.002 = -0.2%)
         
     Returns:
         DataFrame with all signals and trading decisions
@@ -165,11 +173,13 @@ def run_trading_strategy(coin: str = None,
     # Initialize Ensemble Model
     if verbose:
         print("Initializing Ensemble Model...")
+        print(f"  Buy conditions: {buy_min_bull_count}+ models bullish, return > {buy_threshold_return*100:.2f}%")
+        print(f"  Sell conditions: {sell_max_bull_count} or fewer models bullish, return < {sell_threshold_return*100:.2f}%")
     ensemble = EnsembleModel(
-        buy_threshold_return=0.005,  # r_{t+1} > 0.005
-        buy_min_bull_count=6,        # bull_count >= 6
-        sell_threshold_return=-0.005, # r_{t+1} < -0.005
-        sell_max_bull_count=4,       # bull_count <= 4
+        buy_threshold_return=buy_threshold_return,
+        buy_min_bull_count=buy_min_bull_count,
+        sell_threshold_return=sell_threshold_return,
+        sell_max_bull_count=sell_max_bull_count,
         time_stop_days=5,             # Held >= 5 days
         time_stop_min_return=0.05,   # cumulative return > 5%
         stop_loss_threshold=0.98      # P_t < EntryPrice * 0.98

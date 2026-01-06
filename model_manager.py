@@ -486,29 +486,29 @@ class ModelManager:
         # 1. LLM-Sentiment Model
         sentiment_z = self._get_sentiment_z_score(data)
         signals_df['sentiment_z'] = sentiment_z
-        signals_df['LLM_Sentiment_buy'] = (sentiment_z > 0.4).astype(int)
-        signals_df['LLM_Sentiment_sell'] = (sentiment_z < -0.4).astype(int)
+        signals_df['LLM_Sentiment_buy'] = (sentiment_z > 0).astype(int)  # Any positive sentiment = buy
+        signals_df['LLM_Sentiment_sell'] = (sentiment_z < 0).astype(int)  # Any negative sentiment = sell
         
         # 2. XGBoost
         xgb_pred = self._predict_xgboost(data, training_cols)
         signals_df['xgb_pred_change'] = xgb_pred
-        signals_df['XGBoost_buy'] = (xgb_pred > 0.01 * signals_df['P_t']).astype(int)
-        signals_df['XGBoost_sell'] = (xgb_pred < -0.005 * signals_df['P_t']).astype(int)
+        signals_df['XGBoost_buy'] = (xgb_pred > 0).astype(int)  # Any positive prediction = buy
+        signals_df['XGBoost_sell'] = (xgb_pred < 0).astype(int)  # Any negative prediction = sell
         
         # 3. Custom GBM Simulator
         gbm_pred = self._predict_gbm_simulator(data)
         signals_df['gbm_pred_change'] = gbm_pred
         current_price = signals_df['P_t'].iloc[-1]
         gbm_future_price = current_price + gbm_pred.iloc[-1]
-        signals_df['GBM_buy'] = (gbm_future_price > current_price * 1.01).astype(int)
-        signals_df['GBM_sell'] = (gbm_future_price < current_price * 0.995).astype(int)
+        signals_df['GBM_buy'] = (gbm_future_price > current_price).astype(int)  # Any price increase = buy
+        signals_df['GBM_sell'] = (gbm_future_price < current_price).astype(int)  # Any price decrease = sell
         
         # 4. ARIMA/SARIMA
         arima_pred = self._predict_arima(data)
         signals_df['arima_pred_change'] = arima_pred
         arima_future_price = signals_df['P_t'] + arima_pred
-        signals_df['ARIMA_buy'] = (arima_future_price > signals_df['P_t'] * 1.008).astype(int)
-        signals_df['ARIMA_sell'] = (arima_future_price < signals_df['P_t'] * 0.992).astype(int)
+        signals_df['ARIMA_buy'] = (arima_future_price > signals_df['P_t']).astype(int)  # Any price increase = buy
+        signals_df['ARIMA_sell'] = (arima_future_price < signals_df['P_t']).astype(int)  # Any price decrease = sell
         
         # 5. Prophet
         prophet_pred, prophet_lower, prophet_upper = self._predict_prophet(data)
@@ -523,32 +523,32 @@ class ModelManager:
         # 6. Random Forest
         rf_pred = self._predict_random_forest(data, training_cols)
         signals_df['rf_pred_change'] = rf_pred
-        signals_df['RandomForest_buy'] = (rf_pred > 0.007 * signals_df['P_t']).astype(int)
-        signals_df['RandomForest_sell'] = (rf_pred < -0.007 * signals_df['P_t']).astype(int)
+        signals_df['RandomForest_buy'] = (rf_pred > 0).astype(int)  # Any positive prediction = buy
+        signals_df['RandomForest_sell'] = (rf_pred < 0).astype(int)  # Any negative prediction = sell
         
         # 7. LightGBM
         lgbm_pred = self._predict_lightgbm(data, training_cols)
         signals_df['lgbm_pred_change'] = lgbm_pred
-        signals_df['LightGBM_buy'] = (lgbm_pred > 0.01 * signals_df['P_t']).astype(int)
-        signals_df['LightGBM_sell'] = (lgbm_pred < -0.01 * signals_df['P_t']).astype(int)
+        signals_df['LightGBM_buy'] = (lgbm_pred > 0.002 * signals_df['P_t']).astype(int)  # Lowered from 0.01 (1%) to 0.002 (0.2%)
+        signals_df['LightGBM_sell'] = (lgbm_pred < -0.002 * signals_df['P_t']).astype(int)  # Lowered from -0.01 to -0.002
         
         # 8. SVR
         svr_pred = self._predict_svr(data, training_cols)
         signals_df['svr_pred_change'] = svr_pred
-        signals_df['SVR_buy'] = (svr_pred > 0.008 * signals_df['P_t']).astype(int)
-        signals_df['SVR_sell'] = (svr_pred < -0.008 * signals_df['P_t']).astype(int)
+        signals_df['SVR_buy'] = (svr_pred > 0).astype(int)  # Any positive prediction = buy
+        signals_df['SVR_sell'] = (svr_pred < 0).astype(int)  # Any negative prediction = sell
         
         # 9. LSTM/GRU
         lstm_pred = self._predict_lstm_gru(data, training_cols)
         signals_df['rnn_pred_change'] = lstm_pred
-        signals_df['LSTM_GRU_buy'] = (lstm_pred > 0.012 * signals_df['P_t']).astype(int)
-        signals_df['LSTM_GRU_sell'] = (lstm_pred < -0.006 * signals_df['P_t']).astype(int)
+        signals_df['LSTM_GRU_buy'] = (lstm_pred > 0).astype(int)  # Any positive prediction = buy
+        signals_df['LSTM_GRU_sell'] = (lstm_pred < 0).astype(int)  # Any negative prediction = sell
         
         # 10. TCN
         tcn_pred = self._predict_tcn(data, training_cols)
         signals_df['tcn_pred_change'] = tcn_pred
-        signals_df['TCN_buy'] = (tcn_pred > 0.01 * signals_df['P_t']).astype(int)
-        signals_df['TCN_sell'] = (tcn_pred < -0.005 * signals_df['P_t']).astype(int)
+        signals_df['TCN_buy'] = (tcn_pred > 0).astype(int)  # Any positive prediction = buy
+        signals_df['TCN_sell'] = (tcn_pred < 0).astype(int)  # Any negative prediction = sell
         
         # Calculate bull_count (number of models with buy signals)
         buy_cols = [col for col in signals_df.columns if col.endswith('_buy')]
