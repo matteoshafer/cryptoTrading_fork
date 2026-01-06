@@ -94,8 +94,8 @@ def run_trading_strategy(coin: str = None,
                         start_date: str = None, 
                         end_date: str = None,
                         verbose: bool = True,
-                        buy_min_bull_count: int = 1,
-                        buy_threshold_return: float = 0.0,
+                        buy_min_bull_count: int = 2,  # Require at least 2 models to agree for buy
+                        buy_threshold_return: float = 0.0,  # Allow any positive predicted return
                         sell_max_bull_count: int = 0,
                         sell_threshold_return: float = 0.0) -> pd.DataFrame:
     """

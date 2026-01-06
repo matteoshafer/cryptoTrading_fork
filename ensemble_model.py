@@ -145,11 +145,25 @@ class EnsembleModel:
                 buy_condition_2 = bull_count >= self.buy_min_bull_count
                 buy_condition_3 = current_price > sma20 if not pd.isna(sma20) else True  # Make SMA20 optional if NaN
                 
-                # If thresholds are very low (0 or 1), be more lenient - ignore SMA20 and return threshold
-                if self.buy_min_bull_count <= 1 and self.buy_threshold_return <= 0:
-                    should_buy = buy_condition_2  # Only require bull_count
+                # Prioritize model consensus: If multiple models agree, buy!
+                # The more models that agree, the less we rely on technical indicators
+                strong_consensus = bull_count >= max(4, self.buy_min_bull_count + 2)  # 4+ models agree
+                good_consensus = bull_count >= max(3, self.buy_min_bull_count + 1)  # 3+ models agree
+                
+                if strong_consensus:
+                    # Very strong consensus (4+ models): buy if predicted return is positive or threshold is 0
+                    should_buy = buy_condition_2 and (predicted_return > self.buy_threshold_return or self.buy_threshold_return <= 0)
+                elif good_consensus:
+                    # Good consensus (3+ models): require bull_count + return threshold, ignore SMA20
+                    should_buy = buy_condition_2 and (predicted_return > self.buy_threshold_return or self.buy_threshold_return <= 0)
+                elif bull_count >= self.buy_min_bull_count:
+                    # Minimum consensus: require all conditions but be lenient with SMA20
+                    should_buy = buy_condition_2 and (predicted_return > self.buy_threshold_return or self.buy_threshold_return <= 0)
+                    # Only enforce SMA20 if we're at minimum consensus
+                    if bull_count == self.buy_min_bull_count:
+                        should_buy = should_buy and buy_condition_3
                 else:
-                    should_buy = buy_condition_1 and buy_condition_2 and buy_condition_3
+                    should_buy = False
                 
                 if should_buy:
                     # Open new position
