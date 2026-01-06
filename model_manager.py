@@ -9,6 +9,20 @@ from typing import Dict, List, Optional, Tuple
 import warnings
 warnings.filterwarnings('ignore')
 
+# Import individual model classes
+from models import (
+    LLMSentimentModel,
+    XGBoostModel,
+    GBMModel,
+    ARIMAModel,
+    ProphetModel,
+    RandomForestModel,
+    LightGBMModel,
+    SVRModel,
+    LSTMGRUModel,
+    TCNModel
+)
+
 # Model imports with error handling
 try:
     from xgboost import XGBRegressor
@@ -75,10 +89,19 @@ class ModelManager:
         Args:
             model_configs: Dictionary of model configurations (optional)
         """
-        self.models = {}
         self.model_configs = model_configs or self._get_default_configs()
-        self.sentiment_tokenizer = None
-        self.sentiment_model = None
+        
+        # Initialize individual model instances
+        self.llm_sentiment = LLMSentimentModel()
+        self.xgboost = XGBoostModel()
+        self.gbm = GBMModel()
+        self.arima = ARIMAModel()
+        self.prophet = ProphetModel()
+        self.random_forest = RandomForestModel()
+        self.lightgbm = LightGBMModel()
+        self.svr = SVRModel()
+        self.lstm_gru = LSTMGRUModel()
+        self.tcn = TCNModel()
         
     def _get_default_configs(self) -> Dict:
         """Get default model configurations."""
@@ -152,50 +175,11 @@ class ModelManager:
             if 'price_change' not in data.columns:
                 data['price_change'] = data['close'].diff().fillna(0.0)
         
-        # Initialize sentiment model
-        self._initialize_sentiment_model()
-        
-        # Initialize other models (they will be trained on-demand)
+        # Models are already initialized in __init__
         print("Models initialized. They will be trained when generate_signals is called.")
     
-    def _initialize_sentiment_model(self):
-        """Initialize the RoBERTa sentiment model."""
-        if not TORCH_AVAILABLE:
-            self.sentiment_model = None
-            return
-        
-        try:
-            MODEL = "mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis"
-            self.sentiment_tokenizer = AutoTokenizer.from_pretrained(MODEL)
-            self.sentiment_model = AutoModelForSequenceClassification.from_pretrained(MODEL)
-            self.sentiment_model.eval()
-        except Exception as e:
-            print(f"Warning: Could not load sentiment model: {e}")
-            self.sentiment_model = None
-    
-    def _get_sentiment_z_score(self, data: pd.DataFrame) -> pd.Series:
-        """
-        Calculate sentiment z-score from data.
-        
-        Args:
-            data: DataFrame with sentiment columns
-            
-        Returns:
-            Series of sentiment z-scores
-        """
-        if 'sentiment_z' in data.columns:
-            return data['sentiment_z']
-        
-        # Calculate from sentiment score if available
-        if 'avg_sentiment' in data.columns:
-            sentiment = data['avg_sentiment']
-            return (sentiment - sentiment.mean()) / sentiment.std()
-        
-        # Return zeros if no sentiment data
-        return pd.Series(0.0, index=data.index)
-    
     def _predict_xgboost(self, data: pd.DataFrame, training_cols: List[str]) -> pd.Series:
-        """Train and predict using XGBoost."""
+        """Train and predict using XGBoost with rolling window."""
         if not XGBOOST_AVAILABLE:
             return pd.Series(0.0, index=data.index)
         
@@ -206,19 +190,26 @@ class ModelManager:
             X = data[training_cols].fillna(0)
             y = data['price_change'].fillna(0)
             
-            model = XGBRegressor(n_estimators=100, max_depth=5, random_state=42)
-            model.fit(X[:-1], y[:-1])  # Train on all but last row
-            
-            pred = model.predict(X.iloc[[-1]])
             pred_series = pd.Series(0.0, index=data.index)
-            pred_series.iloc[-1] = pred[0]
+            
+            # Use rolling window: for each day, train on previous data and predict
+            min_train_size = 50
+            for i in range(min_train_size, len(data)):
+                try:
+                    model = XGBRegressor(n_estimators=50, max_depth=5, random_state=42, verbosity=0)
+                    model.fit(X.iloc[:i], y.iloc[:i])
+                    pred = model.predict(X.iloc[[i]])
+                    pred_series.iloc[i] = pred[0]
+                except:
+                    pass
+            
             return pred_series
         except Exception as e:
             print(f"XGBoost prediction error: {e}")
             return pd.Series(0.0, index=data.index)
     
     def _predict_random_forest(self, data: pd.DataFrame, training_cols: List[str]) -> pd.Series:
-        """Train and predict using Random Forest."""
+        """Train and predict using Random Forest with rolling window."""
         if len(data) < 50:
             return pd.Series(0.0, index=data.index)
         
@@ -226,19 +217,26 @@ class ModelManager:
             X = data[training_cols].fillna(0)
             y = data['price_change'].fillna(0)
             
-            model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42)
-            model.fit(X[:-1], y[:-1])
-            
-            pred = model.predict(X.iloc[[-1]])
             pred_series = pd.Series(0.0, index=data.index)
-            pred_series.iloc[-1] = pred[0]
+            
+            # Use rolling window: for each day, train on previous data and predict
+            min_train_size = 50
+            for i in range(min_train_size, len(data)):
+                try:
+                    model = RandomForestRegressor(n_estimators=50, max_depth=10, random_state=42, n_jobs=-1)
+                    model.fit(X.iloc[:i], y.iloc[:i])
+                    pred = model.predict(X.iloc[[i]])
+                    pred_series.iloc[i] = pred[0]
+                except:
+                    pass
+            
             return pred_series
         except Exception as e:
             print(f"Random Forest prediction error: {e}")
             return pd.Series(0.0, index=data.index)
     
     def _predict_lightgbm(self, data: pd.DataFrame, training_cols: List[str]) -> pd.Series:
-        """Train and predict using LightGBM."""
+        """Train and predict using LightGBM with rolling window."""
         if not LIGHTGBM_AVAILABLE:
             return pd.Series(0.0, index=data.index)
         
@@ -249,19 +247,26 @@ class ModelManager:
             X = data[training_cols].fillna(0)
             y = data['price_change'].fillna(0)
             
-            model = LGBMRegressor(n_estimators=100, max_depth=5, random_state=42, verbose=-1)
-            model.fit(X[:-1], y[:-1])
-            
-            pred = model.predict(X.iloc[[-1]])
             pred_series = pd.Series(0.0, index=data.index)
-            pred_series.iloc[-1] = pred[0]
+            
+            # Use rolling window: for each day, train on previous data and predict
+            min_train_size = 50
+            for i in range(min_train_size, len(data)):
+                try:
+                    model = LGBMRegressor(n_estimators=50, max_depth=5, random_state=42, verbose=-1)
+                    model.fit(X.iloc[:i], y.iloc[:i])
+                    pred = model.predict(X.iloc[[i]])
+                    pred_series.iloc[i] = pred[0]
+                except:
+                    pass
+            
             return pred_series
         except Exception as e:
             print(f"LightGBM prediction error: {e}")
             return pd.Series(0.0, index=data.index)
     
     def _predict_svr(self, data: pd.DataFrame, training_cols: List[str]) -> pd.Series:
-        """Train and predict using SVR."""
+        """Train and predict using SVR with rolling window."""
         if len(data) < 50:
             return pd.Series(0.0, index=data.index)
         
@@ -269,18 +274,25 @@ class ModelManager:
             X = data[training_cols].fillna(0)
             y = data['price_change'].fillna(0)
             
-            # Scale features for SVR
-            from sklearn.preprocessing import StandardScaler
-            scaler = StandardScaler()
-            X_scaled = scaler.fit_transform(X[:-1])
-            X_scaled_pred = scaler.transform(X.iloc[[-1]])
-            
-            model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
-            model.fit(X_scaled, y[:-1])
-            
-            pred = model.predict(X_scaled_pred)
             pred_series = pd.Series(0.0, index=data.index)
-            pred_series.iloc[-1] = pred[0]
+            
+            # Use rolling window: for each day, train on previous data and predict
+            from sklearn.preprocessing import StandardScaler
+            min_train_size = 50
+            for i in range(min_train_size, len(data)):
+                try:
+                    scaler = StandardScaler()
+                    X_scaled = scaler.fit_transform(X.iloc[:i])
+                    X_scaled_pred = scaler.transform(X.iloc[[i]])
+                    
+                    model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
+                    model.fit(X_scaled, y.iloc[:i])
+                    
+                    pred = model.predict(X_scaled_pred)
+                    pred_series.iloc[i] = pred[0]
+                except:
+                    pass
+            
             return pred_series
         except Exception as e:
             print(f"SVR prediction error: {e}")
@@ -288,7 +300,7 @@ class ModelManager:
     
     def _predict_gbm_simulator(self, data: pd.DataFrame, n_paths: int = 100) -> pd.Series:
         """
-        Simulate Geometric Brownian Motion paths.
+        Simulate Geometric Brownian Motion paths with rolling window.
         
         Args:
             data: Price data
@@ -302,32 +314,43 @@ class ModelManager:
         
         try:
             prices = data['close'].values
-            returns = np.diff(prices) / prices[:-1]
+            pred_series = pd.Series(0.0, index=data.index)
             
-            mu = np.mean(returns)  # Drift
-            sigma = np.std(returns)  # Volatility
-            
-            current_price = prices[-1]
-            dt = 1.0  # Daily time step
+            # Use rolling window: for each day, use previous data to estimate parameters
+            min_train_size = 20
             T = 1  # Forecast horizon (1 day)
             
-            # Simulate paths
-            paths = []
-            for _ in range(n_paths):
-                z = np.random.normal(0, 1)
-                future_price = current_price * np.exp((mu - 0.5 * sigma**2) * T + sigma * np.sqrt(T) * z)
-                paths.append(future_price)
+            for i in range(min_train_size, len(data)):
+                try:
+                    window_prices = prices[:i+1]
+                    window_returns = np.diff(window_prices) / window_prices[:-1]
+                    
+                    if len(window_returns) < 5:
+                        continue
+                    
+                    mu = np.mean(window_returns)  # Drift
+                    sigma = np.std(window_returns)  # Volatility
+                    current_price = window_prices[-1]
+                    
+                    # Simulate paths
+                    paths = []
+                    for _ in range(n_paths):
+                        z = np.random.normal(0, 1)
+                        future_price = current_price * np.exp((mu - 0.5 * sigma**2) * T + sigma * np.sqrt(T) * z)
+                        paths.append(future_price)
+                    
+                    mean_pred = np.mean(paths)
+                    pred_series.iloc[i] = mean_pred - current_price  # Return as price change
+                except:
+                    pass
             
-            mean_pred = np.mean(paths)
-            pred_series = pd.Series(0.0, index=data.index)
-            pred_series.iloc[-1] = mean_pred - current_price  # Return as price change
             return pred_series
         except Exception as e:
             print(f"GBM Simulator error: {e}")
             return pd.Series(0.0, index=data.index)
     
     def _predict_arima(self, data: pd.DataFrame) -> pd.Series:
-        """Train and predict using ARIMA."""
+        """Train and predict using ARIMA with rolling window."""
         if not STATSMODELS_AVAILABLE:
             return pd.Series(0.0, index=data.index)
         
@@ -336,18 +359,26 @@ class ModelManager:
         
         try:
             prices = data['close'].values
-            
-            # Fit ARIMA model
-            model = ARIMA(prices[:-1], order=(2, 1, 2))
-            fitted_model = model.fit()
-            
-            # Forecast next value
-            forecast = fitted_model.forecast(steps=1)
-            current_price = prices[-1]
-            pred_change = forecast[0] - current_price
-            
             pred_series = pd.Series(0.0, index=data.index)
-            pred_series.iloc[-1] = pred_change
+            
+            # Use rolling window: for each day, train on previous data and predict
+            min_train_size = 30
+            for i in range(min_train_size, len(data)):
+                try:
+                    window_prices = prices[:i+1]
+                    # Fit ARIMA model
+                    model = ARIMA(window_prices[:-1], order=(1, 1, 1))
+                    fitted_model = model.fit(disp=0)
+                    
+                    # Forecast next value
+                    forecast = fitted_model.forecast(steps=1)
+                    current_price = window_prices[-1]
+                    pred_change = forecast[0] - current_price
+                    
+                    pred_series.iloc[i] = pred_change
+                except:
+                    pass
+            
             return pred_series
         except Exception as e:
             print(f"ARIMA prediction error: {e}")
@@ -355,7 +386,7 @@ class ModelManager:
     
     def _predict_prophet(self, data: pd.DataFrame) -> Tuple[pd.Series, pd.Series, pd.Series]:
         """
-        Train and predict using Prophet.
+        Train and predict using Prophet with rolling window.
         
         Returns:
             Tuple of (prediction, lower_ci, upper_ci)
@@ -364,36 +395,47 @@ class ModelManager:
             zeros = pd.Series(0.0, index=data.index)
             return zeros, zeros, zeros
         
-        if len(data) < 30 or 'close' not in data.columns or 'time' not in data.columns:
+        if len(data) < 30:
             zeros = pd.Series(0.0, index=data.index)
             return zeros, zeros, zeros
         
         try:
             # Prepare data for Prophet
-            prophet_df = pd.DataFrame({
-                'ds': pd.to_datetime(data['time']),
-                'y': data['close']
-            })
-            
-            # Fit model
-            model = Prophet(yearly_seasonality=False, daily_seasonality=False)
-            model.fit(prophet_df.iloc[:-1])
-            
-            # Forecast
-            future = model.make_future_dataframe(periods=1)
-            forecast = model.predict(future)
-            
-            # Get last prediction
-            last_pred = forecast.iloc[-1]
-            current_price = data['close'].iloc[-1]
+            if 'time' in data.columns:
+                time_col = pd.to_datetime(data['time'])
+            else:
+                time_col = pd.to_datetime(data.index)
             
             pred_series = pd.Series(0.0, index=data.index)
             lower_ci = pd.Series(0.0, index=data.index)
             upper_ci = pd.Series(0.0, index=data.index)
             
-            pred_series.iloc[-1] = last_pred['yhat'] - current_price
-            lower_ci.iloc[-1] = last_pred['yhat_lower']
-            upper_ci.iloc[-1] = last_pred['yhat_upper']
+            # Use rolling window: for each day, train on previous data and predict
+            min_train_size = 30
+            for i in range(min_train_size, len(data)):
+                try:
+                    prophet_df = pd.DataFrame({
+                        'ds': time_col.iloc[:i+1],
+                        'y': data['close'].iloc[:i+1]
+                    })
+                    
+                    # Fit model
+                    model = Prophet(yearly_seasonality=False, daily_seasonality=False)
+                    model.fit(prophet_df.iloc[:-1])
+                    
+                    # Forecast
+                    future = model.make_future_dataframe(periods=1)
+                    forecast = model.predict(future)
+                    
+                    # Get last prediction
+                    last_pred = forecast.iloc[-1]
+                    current_price = data['close'].iloc[i]
+                    
+                    pred_series.iloc[i] = last_pred['yhat'] - current_price
+                    lower_ci.iloc[i] = last_pred['yhat_lower']
+                    upper_ci.iloc[i] = last_pred['yhat_upper']
+                except:
+                    pass
             
             return pred_series, lower_ci, upper_ci
         except Exception as e:
@@ -402,52 +444,74 @@ class ModelManager:
             return zeros, zeros, zeros
     
     def _predict_lstm_gru(self, data: pd.DataFrame, training_cols: List[str], lookback: int = 20) -> pd.Series:
-        """Train and predict using LSTM/GRU."""
+        """Train and predict using LSTM/GRU with rolling window."""
         if len(data) < lookback + 10:
             return pd.Series(0.0, index=data.index)
         
         try:
-            # Simple implementation using moving average as proxy
-            # Full LSTM/GRU would require more complex setup
             prices = data['close'].values
-            returns = np.diff(prices) / prices[:-1]
-            
-            # Use exponential moving average of returns as prediction
-            alpha = 0.3
-            ema_return = returns[-1]
-            for r in returns[-lookback:-1]:
-                ema_return = alpha * r + (1 - alpha) * ema_return
-            
-            current_price = prices[-1]
-            pred_change = ema_return * current_price
-            
             pred_series = pd.Series(0.0, index=data.index)
-            pred_series.iloc[-1] = pred_change
+            
+            # Use rolling window: for each day, use previous data to predict
+            min_train_size = lookback + 10
+            for i in range(min_train_size, len(data)):
+                try:
+                    window_prices = prices[:i+1]
+                    window_returns = np.diff(window_prices) / window_prices[:-1]
+                    
+                    if len(window_returns) < lookback:
+                        continue
+                    
+                    # Use exponential moving average of returns as prediction
+                    alpha = 0.3
+                    ema_return = window_returns[-1]
+                    for r in window_returns[-lookback:-1]:
+                        ema_return = alpha * r + (1 - alpha) * ema_return
+                    
+                    current_price = window_prices[-1]
+                    pred_change = ema_return * current_price
+                    
+                    pred_series.iloc[i] = pred_change
+                except:
+                    pass
+            
             return pred_series
         except Exception as e:
             print(f"LSTM/GRU prediction error: {e}")
             return pd.Series(0.0, index=data.index)
     
     def _predict_tcn(self, data: pd.DataFrame, training_cols: List[str], lookback: int = 20) -> pd.Series:
-        """Train and predict using TCN (Temporal Convolutional Network)."""
+        """Train and predict using TCN (Temporal Convolutional Network) with rolling window."""
         if len(data) < lookback + 10:
             return pd.Series(0.0, index=data.index)
         
         try:
-            # Simplified TCN using convolution of returns
             prices = data['close'].values
-            returns = np.diff(prices) / prices[:-1]
-            
-            # Use weighted average of recent returns (simulating causal convolution)
-            weights = np.exp(-np.arange(len(returns[-lookback:])) * 0.1)
-            weights = weights / weights.sum()
-            weighted_return = np.sum(returns[-lookback:] * weights)
-            
-            current_price = prices[-1]
-            pred_change = weighted_return * current_price
-            
             pred_series = pd.Series(0.0, index=data.index)
-            pred_series.iloc[-1] = pred_change
+            
+            # Use rolling window: for each day, use previous data to predict
+            min_train_size = lookback + 10
+            for i in range(min_train_size, len(data)):
+                try:
+                    window_prices = prices[:i+1]
+                    window_returns = np.diff(window_prices) / window_prices[:-1]
+                    
+                    if len(window_returns) < lookback:
+                        continue
+                    
+                    # Use weighted average of recent returns (simulating causal convolution)
+                    weights = np.exp(-np.arange(lookback) * 0.1)
+                    weights = weights / weights.sum()
+                    recent_returns = window_returns[-lookback:]
+                    weighted_return = np.sum(recent_returns * weights)
+                    
+                    current_price = window_prices[-1]
+                    pred_change = weighted_return * current_price
+                    
+                    pred_series.iloc[i] = pred_change
+                except:
+                    pass
+            
             return pred_series
         except Exception as e:
             print(f"TCN prediction error: {e}")
@@ -484,71 +548,66 @@ class ModelManager:
         signals_df['P_t'] = data['close']  # Current price
         
         # 1. LLM-Sentiment Model
-        sentiment_z = self._get_sentiment_z_score(data)
+        sentiment_z, llm_buy, llm_sell = self.llm_sentiment.generate_signals(data)
         signals_df['sentiment_z'] = sentiment_z
-        signals_df['LLM_Sentiment_buy'] = (sentiment_z > 0).astype(int)  # Any positive sentiment = buy
-        signals_df['LLM_Sentiment_sell'] = (sentiment_z < 0).astype(int)  # Any negative sentiment = sell
+        signals_df['LLM_Sentiment_buy'] = llm_buy
+        signals_df['LLM_Sentiment_sell'] = llm_sell
         
         # 2. XGBoost
-        xgb_pred = self._predict_xgboost(data, training_cols)
+        xgb_pred, xgb_buy, xgb_sell = self.xgboost.generate_signals(data, training_cols)
         signals_df['xgb_pred_change'] = xgb_pred
-        signals_df['XGBoost_buy'] = (xgb_pred > 0).astype(int)  # Any positive prediction = buy
-        signals_df['XGBoost_sell'] = (xgb_pred < 0).astype(int)  # Any negative prediction = sell
+        signals_df['XGBoost_buy'] = xgb_buy
+        signals_df['XGBoost_sell'] = xgb_sell
         
         # 3. Custom GBM Simulator
-        gbm_pred = self._predict_gbm_simulator(data)
+        gbm_pred, gbm_buy, gbm_sell = self.gbm.generate_signals(data)
         signals_df['gbm_pred_change'] = gbm_pred
-        current_price = signals_df['P_t'].iloc[-1]
-        gbm_future_price = current_price + gbm_pred.iloc[-1]
-        signals_df['GBM_buy'] = (gbm_future_price > current_price).astype(int)  # Any price increase = buy
-        signals_df['GBM_sell'] = (gbm_future_price < current_price).astype(int)  # Any price decrease = sell
+        signals_df['GBM_buy'] = gbm_buy
+        signals_df['GBM_sell'] = gbm_sell
         
         # 4. ARIMA/SARIMA
-        arima_pred = self._predict_arima(data)
+        arima_pred, arima_buy, arima_sell = self.arima.generate_signals(data)
         signals_df['arima_pred_change'] = arima_pred
-        arima_future_price = signals_df['P_t'] + arima_pred
-        signals_df['ARIMA_buy'] = (arima_future_price > signals_df['P_t']).astype(int)  # Any price increase = buy
-        signals_df['ARIMA_sell'] = (arima_future_price < signals_df['P_t']).astype(int)  # Any price decrease = sell
+        signals_df['ARIMA_buy'] = arima_buy
+        signals_df['ARIMA_sell'] = arima_sell
         
         # 5. Prophet
-        prophet_pred, prophet_lower, prophet_upper = self._predict_prophet(data)
+        prophet_pred, prophet_buy, prophet_sell, prophet_lower, prophet_upper = self.prophet.generate_signals(data)
         signals_df['prophet_pred'] = signals_df['P_t'] + prophet_pred
         signals_df['prophet_lower'] = prophet_lower
         signals_df['prophet_upper'] = prophet_upper
-        signals_df['Prophet_buy'] = ((signals_df['prophet_pred'] > signals_df['P_t']) & 
-                                     (signals_df['prophet_lower'] > signals_df['P_t'])).astype(int)
-        signals_df['Prophet_sell'] = ((signals_df['prophet_pred'] < signals_df['P_t']) & 
-                                      (signals_df['prophet_upper'] < signals_df['P_t'])).astype(int)
+        signals_df['Prophet_buy'] = prophet_buy
+        signals_df['Prophet_sell'] = prophet_sell
         
         # 6. Random Forest
-        rf_pred = self._predict_random_forest(data, training_cols)
+        rf_pred, rf_buy, rf_sell = self.random_forest.generate_signals(data, training_cols)
         signals_df['rf_pred_change'] = rf_pred
-        signals_df['RandomForest_buy'] = (rf_pred > 0).astype(int)  # Any positive prediction = buy
-        signals_df['RandomForest_sell'] = (rf_pred < 0).astype(int)  # Any negative prediction = sell
+        signals_df['RandomForest_buy'] = rf_buy
+        signals_df['RandomForest_sell'] = rf_sell
         
         # 7. LightGBM
-        lgbm_pred = self._predict_lightgbm(data, training_cols)
+        lgbm_pred, lgbm_buy, lgbm_sell = self.lightgbm.generate_signals(data, training_cols)
         signals_df['lgbm_pred_change'] = lgbm_pred
-        signals_df['LightGBM_buy'] = (lgbm_pred > 0.002 * signals_df['P_t']).astype(int)  # Lowered from 0.01 (1%) to 0.002 (0.2%)
-        signals_df['LightGBM_sell'] = (lgbm_pred < -0.002 * signals_df['P_t']).astype(int)  # Lowered from -0.01 to -0.002
+        signals_df['LightGBM_buy'] = lgbm_buy
+        signals_df['LightGBM_sell'] = lgbm_sell
         
         # 8. SVR
-        svr_pred = self._predict_svr(data, training_cols)
+        svr_pred, svr_buy, svr_sell = self.svr.generate_signals(data, training_cols)
         signals_df['svr_pred_change'] = svr_pred
-        signals_df['SVR_buy'] = (svr_pred > 0).astype(int)  # Any positive prediction = buy
-        signals_df['SVR_sell'] = (svr_pred < 0).astype(int)  # Any negative prediction = sell
+        signals_df['SVR_buy'] = svr_buy
+        signals_df['SVR_sell'] = svr_sell
         
         # 9. LSTM/GRU
-        lstm_pred = self._predict_lstm_gru(data, training_cols)
+        lstm_pred, lstm_buy, lstm_sell = self.lstm_gru.generate_signals(data, training_cols)
         signals_df['rnn_pred_change'] = lstm_pred
-        signals_df['LSTM_GRU_buy'] = (lstm_pred > 0).astype(int)  # Any positive prediction = buy
-        signals_df['LSTM_GRU_sell'] = (lstm_pred < 0).astype(int)  # Any negative prediction = sell
+        signals_df['LSTM_GRU_buy'] = lstm_buy
+        signals_df['LSTM_GRU_sell'] = lstm_sell
         
         # 10. TCN
-        tcn_pred = self._predict_tcn(data, training_cols)
+        tcn_pred, tcn_buy, tcn_sell = self.tcn.generate_signals(data, training_cols)
         signals_df['tcn_pred_change'] = tcn_pred
-        signals_df['TCN_buy'] = (tcn_pred > 0).astype(int)  # Any positive prediction = buy
-        signals_df['TCN_sell'] = (tcn_pred < 0).astype(int)  # Any negative prediction = sell
+        signals_df['TCN_buy'] = tcn_buy
+        signals_df['TCN_sell'] = tcn_sell
         
         # Calculate bull_count (number of models with buy signals)
         buy_cols = [col for col in signals_df.columns if col.endswith('_buy')]
