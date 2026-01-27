@@ -90,14 +90,14 @@ def get_training_columns() -> list:
                 'BB_Lower', 'BB_Middle', 'BB_Upper', 'avg_sentiment']
 
 
-def run_trading_strategy(coin: str = None, 
-                        start_date: str = None, 
+def run_trading_strategy(coin: str = None,
+                        start_date: str = None,
                         end_date: str = None,
                         verbose: bool = True,
-                        buy_min_bull_count: int = 2,  # Require at least 2 models to agree for buy
+                        buy_min_bull_count: int = 1,  # Active trading: 1 model needed
                         buy_threshold_return: float = 0.0,  # Allow any positive predicted return
-                        sell_max_bull_count: int = 0,
-                        sell_threshold_return: float = 0.0) -> pd.DataFrame:
+                        sell_max_bull_count: int = 1,
+                        sell_threshold_return: float = -0.002) -> pd.DataFrame:
     """
     Run the complete trading strategy with all models and ensemble.
     

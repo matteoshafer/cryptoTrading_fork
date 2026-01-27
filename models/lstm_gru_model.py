@@ -15,8 +15,8 @@ class LSTMGRUModel:
     """LSTM/GRU Model for trading signals."""
     
     def __init__(self,
-                 buy_threshold_pct: float = 0.012,  # 1.2% gain
-                 sell_threshold_pct: float = -0.006,  # 0.6% drop
+                 buy_threshold_pct: float = 0.003,  # 0.3% gain - more active trading
+                 sell_threshold_pct: float = -0.002,  # 0.2% drop
                  lookback: int = 20,
                  alpha: float = 0.3,  # EMA smoothing factor
                  min_train_size: int = 30):

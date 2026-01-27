@@ -15,26 +15,29 @@ class EnsembleModel:
     with buy, sell, time stop, and stop-loss rules.
     """
     
-    def __init__(self, 
-                 buy_threshold_return: float = 0.005,
-                 buy_min_bull_count: int = 6,
-                 sell_threshold_return: float = -0.005,
-                 sell_max_bull_count: int = 4,
-                 time_stop_days: int = 5,
-                 time_stop_min_return: float = 0.05,
-                 stop_loss_threshold: float = 0.98):
+    def __init__(self,
+                 buy_threshold_return: float = 0.0,
+                 buy_min_bull_count: int = 1,
+                 sell_threshold_return: float = -0.001,
+                 sell_max_bull_count: int = 1,
+                 time_stop_days: int = 1,
+                 time_stop_min_return: float = 0.01,
+                 stop_loss_threshold: float = 0.99,
+                 max_hold_days: int = 2):
         """
-        Initialize Ensemble Model with trading rules.
-        
+        Initialize Ensemble Model with high-frequency trading rules.
+
         Args:
-            buy_threshold_return: Minimum predicted return for buy signal (default: 0.005 = 0.5%)
-            buy_min_bull_count: Minimum number of bullish models for buy (default: 6)
-            sell_threshold_return: Maximum predicted return for sell signal (default: -0.005 = -0.5%)
-            sell_max_bull_count: Maximum number of bullish models for sell (default: 4)
-            time_stop_days: Days to hold before time stop check (default: 5)
-            time_stop_min_return: Minimum cumulative return for time stop (default: 0.05 = 5%)
-            stop_loss_threshold: Stop loss threshold as fraction of entry price (default: 0.98 = 2% loss)
+            buy_threshold_return: Minimum predicted return for buy signal (default: 0.0%)
+            buy_min_bull_count: Minimum number of bullish models for buy (default: 1)
+            sell_threshold_return: Maximum predicted return for sell signal (default: -0.1%)
+            sell_max_bull_count: Maximum number of bullish models for sell (default: 1)
+            time_stop_days: Days to hold before time stop check (default: 1)
+            time_stop_min_return: Minimum cumulative return for time stop (default: 1%)
+            stop_loss_threshold: Stop loss threshold as fraction of entry price (default: 1% loss)
+            max_hold_days: Maximum days to hold a position (default: 2)
         """
+        self.max_hold_days = max_hold_days
         self.buy_threshold_return = buy_threshold_return
         self.buy_min_bull_count = buy_min_bull_count
         self.sell_threshold_return = sell_threshold_return
@@ -118,52 +121,42 @@ class EnsembleModel:
                     current_position = None
                     continue
                 
-                # Check time stop condition
+                # Check time stop condition (take profit)
                 if days_held >= self.time_stop_days and cumulative_return > self.time_stop_min_return:
                     result_df.loc[row_idx, 'time_stop_triggered'] = True
                     result_df.loc[row_idx, 'ensemble_signal'] = -1
                     result_df.loc[row_idx, 'ensemble_sell'] = 1
-                    # Close position
                     current_position = None
                     continue
-                
+
+                # Max hold days - force exit to free capital for new trades
+                if days_held >= self.max_hold_days:
+                    result_df.loc[row_idx, 'time_stop_triggered'] = True
+                    result_df.loc[row_idx, 'ensemble_signal'] = -1
+                    result_df.loc[row_idx, 'ensemble_sell'] = 1
+                    current_position = None
+                    continue
+
                 # Check sell conditions
                 sell_condition_1 = predicted_return < self.sell_threshold_return
                 sell_condition_2 = bull_count <= self.sell_max_bull_count
-                sell_condition_3 = current_price < sma20
-                
-                if sell_condition_1 or sell_condition_2 or sell_condition_3:
+                sell_condition_3 = current_price < sma20 * 0.98 if not pd.isna(sma20) else False  # 2% below SMA
+
+                # Sell on negative momentum or bearish consensus
+                if sell_condition_1 or (sell_condition_2 and sell_condition_3):
                     result_df.loc[row_idx, 'ensemble_signal'] = -1
                     result_df.loc[row_idx, 'ensemble_sell'] = 1
-                    # Close position
                     current_position = None
                     continue
                 
             else:
-                # No position - check buy conditions
-                buy_condition_1 = predicted_return > self.buy_threshold_return
+                # No position - high frequency trading: buy when any model is bullish
+                buy_condition_1 = predicted_return >= self.buy_threshold_return
                 buy_condition_2 = bull_count >= self.buy_min_bull_count
-                buy_condition_3 = current_price > sma20 if not pd.isna(sma20) else True  # Make SMA20 optional if NaN
-                
-                # Prioritize model consensus: If multiple models agree, buy!
-                # The more models that agree, the less we rely on technical indicators
-                strong_consensus = bull_count >= max(4, self.buy_min_bull_count + 2)  # 4+ models agree
-                good_consensus = bull_count >= max(3, self.buy_min_bull_count + 1)  # 3+ models agree
-                
-                if strong_consensus:
-                    # Very strong consensus (4+ models): buy if predicted return is positive or threshold is 0
-                    should_buy = buy_condition_2 and (predicted_return > self.buy_threshold_return or self.buy_threshold_return <= 0)
-                elif good_consensus:
-                    # Good consensus (3+ models): require bull_count + return threshold, ignore SMA20
-                    should_buy = buy_condition_2 and (predicted_return > self.buy_threshold_return or self.buy_threshold_return <= 0)
-                elif bull_count >= self.buy_min_bull_count:
-                    # Minimum consensus: require all conditions but be lenient with SMA20
-                    should_buy = buy_condition_2 and (predicted_return > self.buy_threshold_return or self.buy_threshold_return <= 0)
-                    # Only enforce SMA20 if we're at minimum consensus
-                    if bull_count == self.buy_min_bull_count:
-                        should_buy = should_buy and buy_condition_3
-                else:
-                    should_buy = False
+
+                # Active trading: buy whenever minimum models are bullish
+                # This allows for frequent entry points
+                should_buy = buy_condition_2 and (buy_condition_1 or predicted_return > -0.005)
                 
                 if should_buy:
                     # Open new position

@@ -16,8 +16,8 @@ class RandomForestModel:
     """Random Forest Model for trading signals."""
     
     def __init__(self,
-                 buy_threshold_pct: float = 0.007,  # 0.7% gain
-                 sell_threshold_pct: float = -0.007,  # 0.7% drop
+                 buy_threshold_pct: float = 0.002,  # 0.2% gain - more active trading
+                 sell_threshold_pct: float = -0.002,  # 0.2% drop
                  n_estimators: int = 50,
                  max_depth: int = 10,
                  min_train_size: int = 50):

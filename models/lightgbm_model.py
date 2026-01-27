@@ -21,8 +21,8 @@ class LightGBMModel:
     """LightGBM Model for trading signals."""
     
     def __init__(self,
-                 buy_threshold_pct: float = 0.01,  # 1% gain
-                 sell_threshold_pct: float = -0.01,  # 1% drop
+                 buy_threshold_pct: float = 0.003,  # 0.3% gain - more active trading
+                 sell_threshold_pct: float = -0.003,  # 0.3% drop
                  n_estimators: int = 50,
                  max_depth: int = 5,
                  min_train_size: int = 50):

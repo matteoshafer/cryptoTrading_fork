@@ -15,8 +15,8 @@ class TCNModel:
     """TCN Model for trading signals."""
     
     def __init__(self,
-                 buy_threshold_pct: float = 0.01,  # 1% gain
-                 sell_threshold_pct: float = -0.005,  # 0.5% drop
+                 buy_threshold_pct: float = 0.003,  # 0.3% gain - more active trading
+                 sell_threshold_pct: float = -0.002,  # 0.2% drop
                  lookback: int = 20,
                  decay_rate: float = 0.1,  # For exponential weighting
                  min_train_size: int = 30):
