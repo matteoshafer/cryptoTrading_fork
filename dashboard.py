@@ -214,6 +214,86 @@ def main():
                 delta=f"Max: {backtest_results['max_return']*100:.2f}%"
             )
         
+        # Portfolio Value Over Time Chart
+        st.header("💰 Portfolio Value Over Time")
+
+        # Calculate portfolio value over time
+        portfolio_values = []
+        capital = 10000.0
+        position = 0
+        entry_price = 0.0
+
+        for idx, row in result_df_display.iterrows():
+            price = row['P_t']
+
+            # Buy signal
+            if row['ensemble_buy'] == 1 and position == 0:
+                position = capital / price
+                entry_price = price
+                capital = 0
+
+            # Sell signal
+            elif row['ensemble_sell'] == 1 and position > 0:
+                capital = position * price
+                position = 0
+                entry_price = 0.0
+
+            # Calculate current portfolio value
+            if position > 0:
+                current_value = position * price
+            else:
+                current_value = capital
+
+            portfolio_values.append({
+                'date': row[date_col],
+                'portfolio_value': current_value,
+                'in_position': position > 0
+            })
+
+        portfolio_df = pd.DataFrame(portfolio_values)
+
+        # Create portfolio value chart
+        fig_portfolio = go.Figure()
+
+        # Portfolio value line
+        fig_portfolio.add_trace(go.Scatter(
+            x=portfolio_df['date'],
+            y=portfolio_df['portfolio_value'],
+            mode='lines',
+            name='Portfolio Value',
+            line=dict(color='#2ecc71', width=2),
+            fill='tozeroy',
+            fillcolor='rgba(46, 204, 113, 0.2)'
+        ))
+
+        # Add horizontal line for initial capital
+        fig_portfolio.add_hline(y=10000, line_dash="dash", line_color="gray",
+                                annotation_text="Initial Capital ($10,000)")
+
+        fig_portfolio.update_layout(
+            title=f"Portfolio Value Over Time - {coin}",
+            xaxis_title="Date",
+            yaxis_title="Portfolio Value ($)",
+            hovermode='x unified',
+            height=400,
+            template='plotly_white',
+            yaxis=dict(tickformat='$,.0f')
+        )
+
+        st.plotly_chart(fig_portfolio, use_container_width=True)
+
+        # Show key portfolio stats
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+            max_value = portfolio_df['portfolio_value'].max()
+            st.metric("Peak Value", f"${max_value:,.2f}")
+        with col_p2:
+            min_value = portfolio_df['portfolio_value'].min()
+            st.metric("Lowest Value", f"${min_value:,.2f}")
+        with col_p3:
+            max_drawdown = (max_value - min_value) / max_value * 100
+            st.metric("Max Drawdown", f"{max_drawdown:.1f}%")
+
         # Price chart with signals
         st.header("📈 Price Chart with Trading Signals")
         
