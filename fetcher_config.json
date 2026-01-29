@@ -1,0 +1,8 @@
+{
+  "coin": "BTC",
+  "data_dir": "fulldata",
+  "fetch_interval_hours": 24,
+  "granularity": 86400,
+  "lookback_days": 365,
+  "auto_calculate_indicators": true
+}
