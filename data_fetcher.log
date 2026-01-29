@@ -1,0 +1,10 @@
+2026-01-28 20:04:04,713 - INFO - Configuration saved to fetcher_config.json
+2026-01-28 20:04:20,117 - INFO - Configuration saved to fetcher_config.json
+2026-01-28 20:04:20,117 - INFO - Running single update for BTC
+2026-01-28 20:04:20,133 - INFO - Loaded 734 existing records from fulldata\BTC_df.csv
+2026-01-28 20:04:20,133 - INFO - Last data point: 2026-01-03
+2026-01-28 20:04:20,133 - INFO - Fetching BTC data from 2026-01-04 to 2026-01-28
+2026-01-28 20:04:21,601 - INFO - Fetched 25 total candles
+2026-01-28 20:04:21,616 - INFO - Combined data: 759 total records
+2026-01-28 20:04:21,650 - INFO - Technical indicators calculated
+2026-01-28 20:04:21,670 - INFO - Data saved to fulldata\BTC_df.csv
