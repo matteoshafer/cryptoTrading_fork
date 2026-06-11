@@ -287,12 +287,42 @@ def backtest_strategy(result_df: pd.DataFrame, initial_capital: float = 10000.0)
     }
 
 
+def get_current_signal(result_df: pd.DataFrame) -> dict:
+    """
+    Return the current trading signal based on the latest row.
+
+    Returns a dict with keys: signal (BUY/SELL/HOLD), price, predicted_return, bull_count.
+    """
+    if result_df.empty:
+        return {'signal': 'UNKNOWN', 'price': None, 'predicted_return': None, 'bull_count': None}
+
+    last = result_df.iloc[-1]
+    price = last.get('P_t', None)
+    pred_return = last.get('predicted_return', None)
+    bull_count = last.get('bull_count', None)
+
+    if last.get('ensemble_buy', 0) == 1:
+        signal = 'BUY'
+    elif last.get('ensemble_sell', 0) == 1:
+        signal = 'SELL'
+    else:
+        signal = 'HOLD'
+
+    return {
+        'signal': signal,
+        'price': price,
+        'predicted_return': pred_return,
+        'bull_count': bull_count,
+        'timestamp': result_df.index[-1]
+    }
+
+
 def main():
     """Main entry point for the trading strategy system.
-    
+
     Usage:
         python main.py [COIN] [START_DATE] [END_DATE]
-        
+
     Examples:
         python main.py                    # Uses default coin (ETH), all data
         python main.py BTC                # Analyze BTC, all data
@@ -300,7 +330,7 @@ def main():
         python main.py BTC 2024-12-01 2024-12-31  # Analyze BTC for December 2024
     """
     import sys
-    
+
     # Parse command line arguments
     coin = sys.argv[1] if len(sys.argv) > 1 else COIN
     start_date = sys.argv[2] if len(sys.argv) > 2 else None
@@ -358,6 +388,23 @@ def main():
                     print(f"  Profit/Loss: ${profit_loss:,.2f}")
             print("="*50)
         
+        # Current signal
+        signal_info = get_current_signal(result_df)
+        signal = signal_info['signal']
+        signal_banner = {'BUY': '🟢 BUY', 'SELL': '🔴 SELL', 'HOLD': '🟡 HOLD'}.get(signal, signal)
+        print("\n" + "="*50)
+        print("CURRENT SIGNAL")
+        print("="*50)
+        print(f"  Signal:           {signal_banner}")
+        if signal_info['price'] is not None:
+            print(f"  Latest Price:     ${signal_info['price']:,.2f}")
+        if signal_info['predicted_return'] is not None:
+            print(f"  Predicted Return: {signal_info['predicted_return']*100:.3f}%")
+        if signal_info['bull_count'] is not None:
+            print(f"  Bullish Models:   {int(signal_info['bull_count'])}")
+        print(f"  As of:            {signal_info['timestamp']}")
+        print("="*50)
+
         # Save results
         date_suffix = f"_{start_date}_{end_date}" if (start_date and end_date) else (f"_{start_date}" if start_date else "")
         output_file = f'{coin}_trading_signals{date_suffix}.csv'

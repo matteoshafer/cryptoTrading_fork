@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
-from main import run_trading_strategy, backtest_strategy, load_data
+from main import run_trading_strategy, backtest_strategy, load_data, get_current_signal
 from functions import fullDataPath
 import warnings
 warnings.filterwarnings('ignore')
@@ -149,11 +149,12 @@ def main():
                 if not result_df.empty:
                     # Run backtest
                     backtest_results = backtest_strategy(result_df, initial_capital=10000.0)
-                    
+
                     # Store in session state
                     st.session_state['result_df'] = result_df
                     st.session_state['backtest_results'] = backtest_results
                     st.session_state['coin'] = coin
+                    st.session_state['current_signal'] = get_current_signal(result_df)
                     st.success("✅ Analysis completed successfully!")
                 else:
                     st.error("No data available for the selected date range")
@@ -161,6 +162,23 @@ def main():
                 st.error(f"Error running analysis: {str(e)}")
                 st.exception(e)
     
+    # Current signal banner
+    if 'current_signal' in st.session_state:
+        sig = st.session_state['current_signal']
+        signal = sig['signal']
+        color = {'BUY': '#27ae60', 'SELL': '#e74c3c', 'HOLD': '#f39c12'}.get(signal, '#888')
+        label = {'BUY': '🟢 BUY', 'SELL': '🔴 SELL', 'HOLD': '🟡 HOLD'}.get(signal, signal)
+        st.markdown(
+            f"""<div style="background:{color};color:white;padding:1.2rem 2rem;border-radius:0.5rem;
+            text-align:center;font-size:1.8rem;font-weight:bold;margin-bottom:1rem;">
+            CURRENT SIGNAL: {label} &nbsp;|&nbsp;
+            Price: ${sig['price']:,.2f} &nbsp;|&nbsp;
+            Predicted Return: {sig['predicted_return']*100:.3f}% &nbsp;|&nbsp;
+            Bullish Models: {int(sig['bull_count'])}
+            </div>""",
+            unsafe_allow_html=True
+        )
+
     # Display results if available
     if 'result_df' in st.session_state and 'backtest_results' in st.session_state:
         result_df = st.session_state['result_df']
