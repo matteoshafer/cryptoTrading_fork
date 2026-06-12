@@ -11,4 +11,5 @@ tensorflow>=2.10.0; platform_system != "Darwin" or platform_machine != "arm64"
 tensorflow-macos>=2.10.0; platform_system == "Darwin" and platform_machine == "arm64"
 apscheduler>=3.10.0
 requests>=2.28.0
-
+feedparser>=6.0.0
+beautifulsoup4>=4.11.0

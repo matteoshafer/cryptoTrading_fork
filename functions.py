@@ -40,34 +40,48 @@ def article_metadata(query):
 
 
 def get_newspapers(query):
-    articles = article_metadata(query)
-    article_df = pd.DataFrame(articles)
-    if 'stories' in article_df.columns:
-        header = pd.json_normalize(article_df['stories'][0])
-        intersection = np.intersect1d(article_df.columns, header.columns)
-        article_df = pd.concat([header[intersection], article_df[intersection]])
-        article_df = article_df.dropna(subset=['date'])
+    """Fetch news articles for a query. Uses free Google News RSS as primary source,
+    falls back to SerpAPI if RSS returns fewer than 3 results."""
+    from news_scraper import scrape_news
 
-    texts = []
-    for index, row in tqdm(article_df.iterrows(), total=len(article_df)):
+    print(f"  Fetching news via Google News RSS: {query}")
+    df = scrape_news(query, max_articles=20, sleep=SLEEP)
 
-        text = ""
-        try:
-            time.sleep(SLEEP)
-            response = requests.get(row['link'], timeout=30)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'html.parser')
-            for paragraph in soup.find_all('p'):
-                text += paragraph.get_text() + '\n'
-            if text.strip() == '':
+    if len(df) >= 3:
+        return df
+
+    # Fallback to SerpAPI
+    print(f"  RSS returned {len(df)} articles — falling back to SerpAPI")
+    try:
+        articles = article_metadata(query)
+        article_df = pd.DataFrame(articles)
+        if 'stories' in article_df.columns:
+            header = pd.json_normalize(article_df['stories'][0])
+            intersection = np.intersect1d(article_df.columns, header.columns)
+            article_df = pd.concat([header[intersection], article_df[intersection]])
+            article_df = article_df.dropna(subset=['date'])
+
+        texts = []
+        for index, row in tqdm(article_df.iterrows(), total=len(article_df)):
+            text = ""
+            try:
+                time.sleep(SLEEP)
+                response = requests.get(row['link'], timeout=30)
+                response.raise_for_status()
+                soup = BeautifulSoup(response.content, 'html.parser')
+                for paragraph in soup.find_all('p'):
+                    text += paragraph.get_text() + '\n'
+                if text.strip() == '':
+                    text = row['title']
+            except Exception:
                 text = row['title']
-        except:
-            text = row['title']
+            texts.append(text)
 
-        texts.append(text)
-
-    article_df['text'] = texts
-    return article_df
+        article_df['text'] = texts
+        return article_df
+    except Exception as e:
+        print(f"  SerpAPI fallback also failed: {e}")
+        return df
 
 def sentimentAnalysis(newspapers_df, NEGATIVE, NEUTRAL, POSITIVE):
     """STEP 2"""
