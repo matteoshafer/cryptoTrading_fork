@@ -168,13 +168,17 @@ def main():
         signal = sig['signal']
         color = {'BUY': '#27ae60', 'SELL': '#e74c3c', 'HOLD': '#f39c12'}.get(signal, '#888')
         label = {'BUY': '🟢 BUY', 'SELL': '🔴 SELL', 'HOLD': '🟡 HOLD'}.get(signal, signal)
+        confidence_html = ""
+        if sig.get('confidence') is not None:
+            bucket = sig.get('confidence_bucket', '?')
+            confidence_html = (f" &nbsp;|&nbsp; Confidence: {sig['confidence']:.0f}/100 ({bucket})")
         st.markdown(
             f"""<div style="background:{color};color:white;padding:1.2rem 2rem;border-radius:0.5rem;
             text-align:center;font-size:1.8rem;font-weight:bold;margin-bottom:1rem;">
             CURRENT SIGNAL: {label} &nbsp;|&nbsp;
             Price: ${sig['price']:,.2f} &nbsp;|&nbsp;
             Predicted Return: {sig['predicted_return']*100:.3f}% &nbsp;|&nbsp;
-            Bullish Models: {int(sig['bull_count'])}
+            Bullish Models: {int(sig['bull_count'])}{confidence_html}
             </div>""",
             unsafe_allow_html=True
         )
@@ -231,44 +235,53 @@ def main():
                 f"{avg_return:.2f}%",
                 delta=f"Max: {backtest_results['max_return']*100:.2f}%"
             )
-        
+
+        # Risk metrics and benchmark comparison
+        col5, col6, col7, col8 = st.columns(4)
+
+        with col5:
+            st.metric("Sharpe Ratio", f"{backtest_results.get('sharpe_ratio', 0.0):.2f}")
+
+        with col6:
+            st.metric("Max Drawdown", f"{backtest_results.get('max_drawdown', 0.0)*100:.2f}%")
+
+        with col7:
+            buy_hold = backtest_results.get('buy_hold_return', 0.0)
+            edge = backtest_results.get('total_return', 0.0) - buy_hold
+            st.metric(
+                "Buy & Hold Return",
+                f"{buy_hold*100:.2f}%",
+                delta=f"Strategy edge: {edge*100:+.2f}%"
+            )
+
+        with col8:
+            sig = st.session_state.get('current_signal', {})
+            if sig.get('confidence') is not None:
+                st.metric(
+                    "Signal Confidence",
+                    f"{sig['confidence']:.0f}/100",
+                    delta=str(sig.get('confidence_bucket', '?')),
+                    delta_color="off"
+                )
+            else:
+                st.metric("Signal Confidence", "n/a")
+
         # Portfolio Value Over Time Chart
         st.header("💰 Portfolio Value Over Time")
 
-        # Calculate portfolio value over time
-        portfolio_values = []
-        capital = 10000.0
-        position = 0
-        entry_price = 0.0
-
-        for idx, row in result_df_display.iterrows():
-            price = row['P_t']
-
-            # Buy signal
-            if row['ensemble_buy'] == 1 and position == 0:
-                position = capital / price
-                entry_price = price
-                capital = 0
-
-            # Sell signal
-            elif row['ensemble_sell'] == 1 and position > 0:
-                capital = position * price
-                position = 0
-                entry_price = 0.0
-
-            # Calculate current portfolio value
-            if position > 0:
-                current_value = position * price
-            else:
-                current_value = capital
-
-            portfolio_values.append({
-                'date': row[date_col],
-                'portfolio_value': current_value,
-                'in_position': position > 0
+        # Use the fee- and sizing-aware equity curve from the backtest instead
+        # of recomputing a fee-free approximation here.
+        equity_curve = backtest_results.get('equity_curve')
+        if equity_curve is not None and len(equity_curve) == len(result_df_display):
+            portfolio_df = pd.DataFrame({
+                'date': result_df_display[date_col].values,
+                'portfolio_value': equity_curve.values
             })
-
-        portfolio_df = pd.DataFrame(portfolio_values)
+        else:
+            portfolio_df = pd.DataFrame({
+                'date': result_df_display[date_col].values,
+                'portfolio_value': [10000.0] * len(result_df_display)
+            })
 
         # Create portfolio value chart
         fig_portfolio = go.Figure()
@@ -309,8 +322,11 @@ def main():
             min_value = portfolio_df['portfolio_value'].min()
             st.metric("Lowest Value", f"${min_value:,.2f}")
         with col_p3:
-            max_drawdown = (max_value - min_value) / max_value * 100
-            st.metric("Max Drawdown", f"{max_drawdown:.1f}%")
+            # Proper peak-to-trough drawdown from the equity curve (not the
+            # naive all-time max vs all-time min, which ignores ordering)
+            values = portfolio_df['portfolio_value']
+            max_drawdown = (values / values.cummax() - 1.0).min() * 100
+            st.metric("Max Drawdown", f"{abs(max_drawdown):.1f}%")
 
         # Price chart with signals
         st.header("📈 Price Chart with Trading Signals")

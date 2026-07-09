@@ -129,9 +129,11 @@ if __name__ == "__main__":
             print("BACKTEST RESULTS")
             print("="*50)
             for key, value in backtest_results.items():
-                if key != 'trades':
+                if key not in ('trades', 'equity_curve'):
                     if isinstance(value, float):
-                        if 'return' in key.lower() or 'rate' in key.lower():
+                        if 'sharpe' in key.lower():
+                            print(f"{key}: {value:.2f}")
+                        elif 'return' in key.lower() or 'rate' in key.lower() or 'drawdown' in key.lower():
                             print(f"{key}: {value*100:.2f}%")
                         elif 'capital' in key.lower():
                             print(f"{key}: ${value:,.2f}")

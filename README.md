@@ -6,7 +6,8 @@ An ensemble ML trading system for cryptocurrency that generates buy/sell/hold si
 
 - **10 ML models** combined into an ensemble: XGBoost, LightGBM, Random Forest, ARIMA/SARIMA, Prophet, SVR, LSTM/GRU, TCN, GBM Simulator, and LLM sentiment (RoBERTa)
 - **Current signal** — run the script and get an immediate BUY / SELL / HOLD recommendation based on the latest data
-- **Backtesting** — simulates trades over historical data with full P&L, win rate, and trade log
+- **Confidence score** — every signal carries a 0-100 confidence (LOW/MEDIUM/HIGH) computed offline from model agreement, prediction signal-to-noise, each model's recent hit rate, and Prophet's forecast-interval width. No API or LLM calls at trading time.
+- **Backtesting** — simulates trades over historical data with fees, confidence-based position sizing, full P&L, Sharpe ratio, max drawdown, a buy-and-hold benchmark, win rate, and trade log
 - **Interactive dashboard** — Streamlit UI with price chart, portfolio value over time, and signal visualization
 - Supports BTC and ETH out of the box
 
@@ -36,7 +37,8 @@ CURRENT SIGNAL
   Signal:           🟢 BUY
   Latest Price:     $95,420.00
   Predicted Return: 0.312%
-  Bullish Models:   6
+  Bullish Models:   6 of 8 active
+  Confidence:       71/100 (HIGH)
   As of:            2025-05-07
 ==================================================
 ```
@@ -48,10 +50,10 @@ streamlit run dashboard.py
 ```
 
 Pick a coin and date range in the sidebar, click **Run Analysis**, and the dashboard shows:
-- Color-coded current signal banner (green/red/yellow)
-- Portfolio value over time chart
+- Color-coded current signal banner (green/red/yellow) with the signal confidence score
+- Portfolio value over time chart (fee- and position-sizing-aware equity curve)
 - Price chart with buy/sell markers
-- Backtest metrics (total return, win rate, avg return/trade)
+- Backtest metrics (total return, win rate, avg return/trade, Sharpe ratio, max drawdown, buy & hold comparison)
 - Trade log table
 - Per-model signal breakdown
 
@@ -77,11 +79,14 @@ Each of the 10 models produces an independent buy/sell signal. The ensemble comb
 
 ### Backtesting
 
-`backtest_strategy()` simulates $10,000 in starting capital through all historical buy/sell signals and reports:
+`backtest_strategy()` simulates $10,000 in starting capital through all historical buy/sell signals, charging a 0.5% fee per leg and sizing each entry by the signal's confidence score (25%-100% of available cash; pass `size_by_confidence=False` for all-in trades). It reports:
 
 | Metric | Description |
 |---|---|
-| Total Return | % gain/loss over the full period |
+| Total Return | % gain/loss over the full period, net of fees |
+| Buy & Hold Return | Benchmark: buying at the start and holding to the end (same fees) |
+| Sharpe Ratio | Annualized risk-adjusted return from the daily equity curve |
+| Max Drawdown | Worst peak-to-trough decline of the equity curve |
 | Final Capital | Dollar value at end |
 | Win Rate | % of trades that were profitable |
 | Avg Return/Trade | Mean return across all closed positions |

@@ -96,12 +96,12 @@ class ModelManager:
                 "sell_condition": "svr_pred_change < -0.008 * P_t"
             },
             "LSTM_GRU": {
-                "description": "Recurrent neural net capturing longer sequential dependencies.",
+                "description": "PyTorch GRU trained walk-forward on return sequences (falls back to an EMA momentum heuristic if torch is not installed).",
                 "buy_condition": "rnn_pred_change > +0.012 * P_t",
                 "sell_condition": "rnn_pred_change < -0.006 * P_t"
             },
             "TCN": {
-                "description": "Convolutional sequence model with causal dilations—fast and stable.",
+                "description": "PyTorch causal dilated conv net trained walk-forward on return sequences (falls back to a weighted-average heuristic if torch is not installed).",
                 "buy_condition": "tcn_pred_change > +0.01 * P_t",
                 "sell_condition": "tcn_pred_change < -0.005 * P_t"
             }
@@ -183,6 +183,7 @@ class ModelManager:
         
         # 5. Prophet
         prophet_pred, prophet_buy, prophet_sell, prophet_lower, prophet_upper = self.prophet.generate_signals(data)
+        signals_df['prophet_pred_change'] = prophet_pred
         signals_df['prophet_pred'] = signals_df['P_t'] + prophet_pred
         signals_df['prophet_lower'] = prophet_lower
         signals_df['prophet_upper'] = prophet_upper
@@ -223,7 +224,9 @@ class ModelManager:
         buy_cols = [col for col in signals_df.columns if col.endswith('_buy')]
         signals_df['bull_count'] = signals_df[buy_cols].sum(axis=1)
         
-        # Calculate predicted return for ensemble (average of all predictions)
+        # Calculate predicted return for ensemble (average of all predictions).
+        # 'prophet_pred_change' is included here, so Prophet participates in
+        # the average alongside the other nine models.
         pred_change_cols = [col for col in signals_df.columns if 'pred_change' in col or col == 'sentiment_z']
         if len(pred_change_cols) > 0:
             # Normalize predictions to returns
@@ -239,10 +242,121 @@ class ModelManager:
             pred_returns_arr = np.vstack(pred_returns)  # shape: (n_models, n_samples)
             signals_df['predicted_return'] = pred_returns_arr.mean(axis=0)
         else:
+            pred_returns_arr = np.zeros((0, len(signals_df)))
             signals_df['predicted_return'] = 0.0
-        
+
         # Add SMA20 for ensemble
         signals_df['SMA_20'] = data['SMA_20'] if 'SMA_20' in data.columns else data['close'].rolling(20).mean()
-        
+
+        # Ensemble confidence score (0-100). Pure statistics computed offline
+        # from the models' own outputs — no network calls and no LLM inference
+        # anywhere in this path.
+        self._add_confidence(signals_df, pred_returns_arr)
+
         return signals_df
+
+    # Rolling window (bars) used for each model's walk-forward hit rate.
+    HIT_RATE_WINDOW = 30
+
+    def _add_confidence(self, signals_df: pd.DataFrame, pred_matrix: np.ndarray):
+        """
+        Attach a quantitative confidence score to every bar.
+
+        The score blends four leak-free, LLM-free components, each mapped to
+        [0, 1] and computed relative to *active* models only (a model is
+        active if it produced any nonzero prediction this run — models whose
+        optional dependency is missing emit all zeros and are excluded):
+
+        1. Directional agreement (35%): fraction of active models whose
+           predicted return shares the majority sign, rescaled so a 50/50
+           split scores 0 and unanimity scores 1.
+        2. Signal-to-noise (25%): |mean| / std of the cross-model predicted
+           returns — a strong consensus magnitude relative to model
+           disagreement scores high.
+        3. Recent reliability (30%): each active model's rolling hit rate over
+           the last HIT_RATE_WINDOW resolved calls (did the sign of its
+           prediction at bar t match the realized t -> t+1 move?), averaged
+           across models. Outcomes are shifted one bar so only already
+           realized moves are used — no lookahead.
+        4. Prophet interval width (10%, only when Prophet is active): a narrow
+           forecast interval relative to price means the statistical forecast
+           is tight; a wide one means high uncertainty.
+
+        Adds columns: active_models, confidence (0-100), confidence_bucket
+        (LOW < 40 <= MEDIUM < 70 <= HIGH).
+        """
+        n = len(signals_df)
+
+        active_mask = np.array([np.any(pred_matrix[m] != 0)
+                                for m in range(pred_matrix.shape[0])], dtype=bool)
+        n_active = int(active_mask.sum())
+        signals_df['active_models'] = n_active
+
+        if n_active == 0 or n == 0:
+            signals_df['confidence'] = 0.0
+            signals_df['confidence_bucket'] = 'LOW'
+            return
+
+        preds = pred_matrix[active_mask]  # (n_active, n)
+
+        # 1) Directional agreement among active models
+        n_pos = (preds > 0).sum(axis=0)
+        n_neg = (preds < 0).sum(axis=0)
+        agreement_frac = np.maximum(n_pos, n_neg) / n_active
+        c_agree = np.clip((agreement_frac - 0.5) * 2.0, 0.0, 1.0)
+
+        # 2) Signal-to-noise of the cross-model prediction spread
+        if n_active >= 2:
+            snr = np.abs(preds.mean(axis=0)) / (preds.std(axis=0) + 1e-9)
+            c_snr = snr / (1.0 + snr)
+        else:
+            c_snr = np.full(n, 0.5)  # dispersion undefined with one model
+
+        # 3) Rolling walk-forward hit rate per active model
+        price = signals_df['P_t'].values.astype(float)
+        next_move = np.full(n, np.nan)
+        next_move[:-1] = price[1:] - price[:-1]
+
+        hit_rates = np.full((preds.shape[0], n), np.nan)
+        for m in range(preds.shape[0]):
+            called = preds[m] != 0
+            correct = (np.sign(preds[m]) == np.sign(next_move)).astype(float)
+            calls = pd.Series(np.where(called, correct, np.nan))
+            # A call at bar t resolves at bar t+1, so shift by one bar before
+            # rolling: the rate at bar t only reflects already-settled calls.
+            hit_rates[m] = calls.shift(1).rolling(
+                self.HIT_RATE_WINDOW, min_periods=5).mean().values
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')  # all-NaN warm-up columns
+            avg_hit_rate = np.nanmean(hit_rates, axis=0)
+        # Map: <= 40% hit rate -> 0, >= 65% -> 1; NaN (warm-up) -> neutral 0.5
+        c_hit = np.clip((avg_hit_rate - 0.40) / 0.25, 0.0, 1.0)
+        c_hit = np.where(np.isnan(avg_hit_rate), 0.5, c_hit)
+
+        # 4) Prophet forecast-interval width (only when Prophet produced CIs)
+        c_prophet = None
+        if 'prophet_lower' in signals_df.columns and 'prophet_upper' in signals_df.columns:
+            lower = signals_df['prophet_lower'].values.astype(float)
+            upper = signals_df['prophet_upper'].values.astype(float)
+            has_ci = (lower != 0) | (upper != 0)
+            if has_ci.any():
+                rel_width = np.where(
+                    has_ci, (upper - lower) / np.maximum(np.abs(price), 1e-9), np.nan)
+                # 0% wide -> 1.0 confidence, >= 10% of price wide -> 0.0
+                c_prophet = np.clip(1.0 - rel_width / 0.10, 0.0, 1.0)
+                c_prophet = np.where(np.isnan(rel_width), 0.5, c_prophet)
+
+        components = [(0.35, c_agree), (0.25, c_snr), (0.30, c_hit)]
+        if c_prophet is not None:
+            components.append((0.10, c_prophet))
+        total_weight = sum(w for w, _ in components)
+        confidence = sum(w * c for w, c in components) / total_weight * 100.0
+
+        signals_df['confidence'] = np.round(confidence, 1)
+        signals_df['confidence_bucket'] = pd.cut(
+            confidence,
+            bins=[-0.1, 40.0, 70.0, 100.1],
+            labels=['LOW', 'MEDIUM', 'HIGH']
+        ).astype(str)
 

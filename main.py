@@ -204,7 +204,8 @@ def run_trading_strategy(coin: str = None,
 
 
 def backtest_strategy(result_df: pd.DataFrame, initial_capital: float = 10000.0,
-                       fee_pct: float = 0.005) -> Dict:
+                       fee_pct: float = 0.005,
+                       size_by_confidence: bool = True) -> Dict:
     """
     Backtest the trading strategy.
 
@@ -216,40 +217,57 @@ def backtest_strategy(result_df: pd.DataFrame, initial_capital: float = 10000.0,
             taker fees run ~0.5-0.6% per side at low volume tiers, so the default
             approximates realistic retail execution cost. Set to 0.0 to reproduce
             the old (unrealistic) fee-free behavior.
+        size_by_confidence: When True and a 'confidence' column is present,
+            each buy invests between 25% (confidence 0) and 100% (confidence
+            100) of available cash instead of always going all-in. Set to
+            False for the old 100%-per-trade behavior.
 
     Returns:
-        Dictionary with backtest results
+        Dictionary with backtest results, including risk metrics
+        (sharpe_ratio, max_drawdown), a buy-and-hold benchmark, and the
+        per-bar 'equity_curve' Series.
     """
     if result_df.empty:
         return {}
 
-    capital = initial_capital
-    position = 0  # Number of shares/coins held
+    cash = initial_capital
+    position = 0.0  # Number of shares/coins held
     entry_price = 0.0
 
     trades = []
+    equity_values = []
+
+    use_confidence = size_by_confidence and 'confidence' in result_df.columns
 
     for idx, row in result_df.iterrows():
         price = row['P_t']
 
         # Buy signal
         if row['ensemble_buy'] == 1 and position == 0:
+            if use_confidence and not pd.isna(row['confidence']):
+                conf = min(max(float(row['confidence']), 0.0), 100.0)
+                allocation = 0.25 + 0.75 * conf / 100.0
+            else:
+                allocation = 1.0
+            invest = cash * allocation
             fill_price = price * (1 + fee_pct)
-            position = capital / fill_price
+            position = invest / fill_price
             entry_price = fill_price
-            capital = 0
+            cash -= invest
             trades.append({
                 'date': idx,
                 'action': 'BUY',
                 'price': price,
                 'fill_price': fill_price,
-                'shares': position
+                'shares': position,
+                'allocation': allocation,
+                'confidence': float(row['confidence']) if use_confidence and not pd.isna(row['confidence']) else None
             })
 
         # Sell signal
         elif row['ensemble_sell'] == 1 and position > 0:
             fill_price = price * (1 - fee_pct)
-            capital = position * fill_price
+            cash += position * fill_price
             return_pct = (fill_price - entry_price) / entry_price
             trades.append({
                 'date': idx,
@@ -259,18 +277,22 @@ def backtest_strategy(result_df: pd.DataFrame, initial_capital: float = 10000.0,
                 'shares': position,
                 'return_pct': return_pct
             })
-            position = 0
+            position = 0.0
             entry_price = 0.0
+
+        # Mark-to-market equity at every bar
+        equity_values.append(cash + position * price)
+
+    equity_curve = pd.Series(equity_values, index=result_df.index, name='equity')
 
     # Calculate final value
     if position > 0:
-        final_price = result_df['P_t'].iloc[-1] * (1 - fee_pct)
-        final_capital = position * final_price
+        final_capital = cash + position * result_df['P_t'].iloc[-1] * (1 - fee_pct)
     else:
-        final_capital = capital
-    
+        final_capital = cash
+
     total_return = (final_capital - initial_capital) / initial_capital
-    
+
     # Calculate statistics
     trade_returns = [t['return_pct'] for t in trades if 'return_pct' in t]
     if trade_returns:
@@ -283,16 +305,34 @@ def backtest_strategy(result_df: pd.DataFrame, initial_capital: float = 10000.0,
         win_rate = 0.0
         max_return = 0.0
         min_return = 0.0
-    
+
+    # Risk metrics from the daily equity curve
+    daily_returns = equity_curve.pct_change().dropna()
+    if len(daily_returns) > 1 and daily_returns.std() > 0:
+        sharpe_ratio = float(daily_returns.mean() / daily_returns.std() * np.sqrt(365))
+    else:
+        sharpe_ratio = 0.0
+    running_max = equity_curve.cummax()
+    max_drawdown = float((equity_curve / running_max - 1.0).min()) if len(equity_curve) else 0.0
+
+    # Buy-and-hold benchmark over the same window, with the same fees
+    first_price = result_df['P_t'].iloc[0]
+    last_price = result_df['P_t'].iloc[-1]
+    buy_hold_return = (last_price * (1 - fee_pct)) / (first_price * (1 + fee_pct)) - 1.0
+
     return {
         'initial_capital': initial_capital,
         'final_capital': final_capital,
         'total_return': total_return,
+        'buy_hold_return': buy_hold_return,
+        'sharpe_ratio': sharpe_ratio,
+        'max_drawdown': max_drawdown,
         'total_trades': len([t for t in trades if t['action'] == 'BUY']),
         'avg_return_per_trade': avg_return,
         'win_rate': win_rate,
         'max_return': max_return,
         'min_return': min_return,
+        'equity_curve': equity_curve,
         'trades': trades
     }
 
@@ -301,15 +341,22 @@ def get_current_signal(result_df: pd.DataFrame) -> dict:
     """
     Return the current trading signal based on the latest row.
 
-    Returns a dict with keys: signal (BUY/SELL/HOLD), price, predicted_return, bull_count.
+    Returns a dict with keys: signal (BUY/SELL/HOLD), price, predicted_return,
+    bull_count, confidence (0-100), confidence_bucket (LOW/MEDIUM/HIGH),
+    active_models, timestamp.
     """
     if result_df.empty:
-        return {'signal': 'UNKNOWN', 'price': None, 'predicted_return': None, 'bull_count': None}
+        return {'signal': 'UNKNOWN', 'price': None, 'predicted_return': None,
+                'bull_count': None, 'confidence': None, 'confidence_bucket': None,
+                'active_models': None}
 
     last = result_df.iloc[-1]
     price = last.get('P_t', None)
     pred_return = last.get('predicted_return', None)
     bull_count = last.get('bull_count', None)
+    confidence = last.get('confidence', None)
+    confidence_bucket = last.get('confidence_bucket', None)
+    active_models = last.get('active_models', None)
 
     if last.get('ensemble_buy', 0) == 1:
         signal = 'BUY'
@@ -323,6 +370,9 @@ def get_current_signal(result_df: pd.DataFrame) -> dict:
         'price': price,
         'predicted_return': pred_return,
         'bull_count': bull_count,
+        'confidence': confidence,
+        'confidence_bucket': confidence_bucket,
+        'active_models': active_models,
         'timestamp': result_df.index[-1]
     }
 
@@ -368,9 +418,11 @@ def main():
         print("BACKTEST RESULTS")
         print("="*50)
         for key, value in backtest_results.items():
-            if key != 'trades':
+            if key not in ('trades', 'equity_curve'):
                 if isinstance(value, float):
-                    if 'return' in key.lower() or 'rate' in key.lower():
+                    if 'sharpe' in key.lower():
+                        print(f"{key}: {value:.2f}")
+                    elif 'return' in key.lower() or 'rate' in key.lower() or 'drawdown' in key.lower():
                         print(f"{key}: {value*100:.2f}%")
                     elif 'capital' in key.lower():
                         print(f"{key}: ${value:,.2f}")
@@ -392,6 +444,9 @@ def main():
                 print(f"  Action: {trade['action']}")
                 print(f"  Price: ${trade['price']:,.2f}")
                 print(f"  Shares: {trade['shares']:.6f}")
+                if trade.get('confidence') is not None:
+                    print(f"  Confidence: {trade['confidence']:.0f}/100 "
+                          f"(allocated {trade['allocation']*100:.0f}% of cash)")
                 if 'return_pct' in trade:
                     exit_value = trade['shares'] * trade['fill_price']
                     profit_loss = exit_value - (exit_value / (1 + trade['return_pct']))
@@ -412,7 +467,13 @@ def main():
         if signal_info['predicted_return'] is not None:
             print(f"  Predicted Return: {signal_info['predicted_return']*100:.3f}%")
         if signal_info['bull_count'] is not None:
-            print(f"  Bullish Models:   {int(signal_info['bull_count'])}")
+            bulls = f"{int(signal_info['bull_count'])}"
+            if signal_info.get('active_models') is not None:
+                bulls += f" of {int(signal_info['active_models'])} active"
+            print(f"  Bullish Models:   {bulls}")
+        if signal_info.get('confidence') is not None:
+            print(f"  Confidence:       {signal_info['confidence']:.0f}/100 "
+                  f"({signal_info.get('confidence_bucket', '?')})")
         print(f"  As of:            {signal_info['timestamp']}")
         print("="*50)
 

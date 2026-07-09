@@ -42,11 +42,15 @@ Manages 10 individual ML models and generates buy/sell signals:
    - Buy: `svr_pred_change > +0.008 * P_t`
    - Sell: `svr_pred_change < -0.008 * P_t`
 
-9. **LSTM/GRU**
+9. **LSTM/GRU** (PyTorch GRU trained walk-forward on return sequences; if
+   torch is not installed it falls back to a simple EMA momentum heuristic —
+   a baseline, not a neural net)
    - Buy: `rnn_pred_change > +0.012 * P_t`
    - Sell: `rnn_pred_change < -0.006 * P_t`
 
-10. **Temporal Convolutional Network (TCN)**
+10. **Temporal Convolutional Network (TCN)** (PyTorch causal dilated conv net
+    trained walk-forward; if torch is not installed it falls back to a
+    weighted-average-of-returns heuristic — a baseline, not a neural net)
     - Buy: `tcn_pred_change > +0.01 * P_t`
     - Sell: `tcn_pred_change < -0.005 * P_t`
 
@@ -68,6 +72,28 @@ Combines individual model signals with the following rules:
 
 #### Stop-Loss:
 - `P_t < EntryPrice × 0.98` (2% loss from entry price)
+
+### Signal Confidence Score
+
+Every bar gets a quantitative `confidence` score (0-100) and a
+`confidence_bucket` (LOW < 40 <= MEDIUM < 70 <= HIGH), computed purely from
+statistics on the models' own outputs — **no network calls and no LLM
+inference at trading time**. It blends four components, each computed
+relative to the models that are actually *active* this run (models whose
+optional dependency is missing emit all-zero predictions and are excluded):
+
+| Component | Weight | Meaning |
+|---|---|---|
+| Directional agreement | 35% | Fraction of active models whose predicted return shares the majority sign (50/50 split → 0, unanimous → 1) |
+| Signal-to-noise | 25% | \|mean\| / std of the cross-model predicted returns — strong consensus relative to disagreement scores high |
+| Recent reliability | 30% | Each model's rolling hit rate over its last 30 *resolved* directional calls (shifted one bar, so no lookahead), averaged across models |
+| Prophet interval width | 10% | Narrow forecast interval relative to price → high; ≥10% of price wide → 0. Dropped (weights renormalized) when Prophet is inactive |
+
+The score appears in the CLI **CURRENT SIGNAL** block, the output CSV
+(`confidence`, `confidence_bucket`, `active_models` columns), and the
+dashboard banner. `backtest_strategy(size_by_confidence=True)` (the default)
+also uses it for position sizing: each buy invests 25% (confidence 0) to
+100% (confidence 100) of available cash.
 
 ### 3. Main Orchestration (`main.py`)
 
@@ -136,8 +162,8 @@ pip install -r requirements.txt
 - LightGBM: `pip install lightgbm`
 - Prophet: `pip install prophet`
 - Statsmodels: `pip install statsmodels`
-- PyTorch: `pip install torch transformers`
-- TensorFlow: `pip install tensorflow` (optional, for LSTM/GRU/TCN)
+- PyTorch: `pip install torch` (for the LSTM/GRU and TCN networks; add
+  `transformers` for the offline news-sentiment labeling pipeline)
 
 The system will gracefully handle missing dependencies and disable corresponding models.
 
@@ -154,15 +180,25 @@ The system generates a CSV file `{COIN}_trading_signals.csv` containing:
 ## Backtest Results
 
 The backtest function provides:
-- Total return percentage
+- Total return percentage (net of fees, default 0.5% per leg)
+- Buy-and-hold benchmark return over the same window (same fees)
+- Annualized Sharpe ratio (from the daily mark-to-market equity curve)
+- Maximum drawdown (peak-to-trough on the equity curve)
 - Win rate
 - Average return per trade
 - Maximum and minimum returns
-- Trade history
+- Trade history (with the confidence score and cash allocation of each entry)
+- The full per-bar `equity_curve` Series
 
 ## Notes
 
 - Models are trained incrementally (using all data up to the current point)
+- Heavier models retrain periodically instead of every bar (`retrain_interval`
+  constructor argument: default 5 bars for XGBoost/LightGBM/Random Forest/
+  SVR/ARIMA, 10 for Prophet, 20 for the LSTM/GRU and TCN networks). Between
+  refits the cached model — trained only on data before its refit bar — is
+  reused, so the walk-forward no-lookahead property is preserved. Set
+  `retrain_interval=1` to retrain every bar as before.
 - The system requires at least 50 data points for reliable predictions
 - Some models (Prophet, ARIMA) require more historical data
 - The ensemble model tracks positions and applies risk management rules automatically

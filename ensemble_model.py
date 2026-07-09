@@ -226,7 +226,18 @@ class EnsembleModel:
             'stop_loss_triggers': int(stop_loss_count),
             'time_stop_triggers': int(time_stop_count)
         }
-        
+
+        # Buy-and-hold benchmark over the same window for context
+        if 'P_t' in result_df.columns and len(result_df) > 1 and result_df['P_t'].iloc[0] != 0:
+            summary['buy_hold_return'] = float(
+                result_df['P_t'].iloc[-1] / result_df['P_t'].iloc[0] - 1.0)
+
+        # Average confidence at entry, if the confidence score is present
+        if 'confidence' in result_df.columns:
+            buys = result_df[result_df['ensemble_buy'] == 1]
+            if len(buys) > 0:
+                summary['avg_buy_confidence'] = float(buys['confidence'].mean())
+
         return summary
     
     def reset_positions(self):

@@ -22,10 +22,11 @@ class SVRModel:
                  kernel: str = 'rbf',
                  C: float = 1.0,
                  epsilon: float = 0.1,
-                 min_train_size: int = 50):
+                 min_train_size: int = 50,
+                 retrain_interval: int = 5):
         """
         Initialize SVR Model.
-        
+
         Args:
             buy_threshold_pct: Buy threshold as percentage of price (default: 0.008 = 0.8%)
             sell_threshold_pct: Sell threshold as percentage of price (default: -0.008 = -0.8%)
@@ -33,6 +34,9 @@ class SVRModel:
             C: Regularization parameter
             epsilon: Epsilon parameter
             min_train_size: Minimum training data size
+            retrain_interval: Refit the model every N bars and reuse it for the
+                bars in between (walk-forward safe: the cached model/scaler were
+                trained only on data prior to their refit bar). 1 = every bar.
         """
         self.buy_threshold_pct = buy_threshold_pct
         self.sell_threshold_pct = sell_threshold_pct
@@ -40,6 +44,7 @@ class SVRModel:
         self.C = C
         self.epsilon = epsilon
         self.min_train_size = min_train_size
+        self.retrain_interval = max(1, retrain_interval)
     
     def predict(self, data: pd.DataFrame, training_cols: List[str]) -> pd.Series:
         """
@@ -62,17 +67,23 @@ class SVRModel:
             y = data['close'].diff().shift(-1).fillna(0)
             
             pred_series = pd.Series(0.0, index=data.index)
-            
-            # Use rolling window: for each day, train on previous data and predict
+
+            # Walk-forward: refit scaler+model every `retrain_interval` bars
+            # on data up to that bar, reuse them for the bars in between.
+            model = None
+            scaler = None
+            last_fit = -1
             for i in range(self.min_train_size, len(data)):
                 try:
-                    scaler = StandardScaler()
-                    X_scaled = scaler.fit_transform(X.iloc[:i])
+                    if model is None or (i - last_fit) >= self.retrain_interval:
+                        scaler = StandardScaler()
+                        X_scaled = scaler.fit_transform(X.iloc[:i])
+
+                        model = SVR(kernel=self.kernel, C=self.C, epsilon=self.epsilon)
+                        model.fit(X_scaled, y.iloc[:i])
+                        last_fit = i
+
                     X_scaled_pred = scaler.transform(X.iloc[[i]])
-                    
-                    model = SVR(kernel=self.kernel, C=self.C, epsilon=self.epsilon)
-                    model.fit(X_scaled, y.iloc[:i])
-                    
                     pred = model.predict(X_scaled_pred)
                     pred_series.iloc[i] = pred[0]
                 except:

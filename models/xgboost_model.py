@@ -25,22 +25,27 @@ class XGBoostModel:
                  sell_threshold_pct: float = -0.002,  # 0.2% drop
                  n_estimators: int = 50,
                  max_depth: int = 5,
-                 min_train_size: int = 50):
+                 min_train_size: int = 50,
+                 retrain_interval: int = 5):
         """
         Initialize XGBoost Model.
-        
+
         Args:
             buy_threshold_pct: Buy threshold as percentage of price (default: 0.01 = 1%)
             sell_threshold_pct: Sell threshold as percentage of price (default: -0.005 = -0.5%)
             n_estimators: Number of boosting rounds
             max_depth: Maximum tree depth
             min_train_size: Minimum training data size
+            retrain_interval: Refit the model every N bars and reuse it for the
+                bars in between (walk-forward safe: the cached model was trained
+                only on data prior to its refit bar). 1 = retrain every bar.
         """
         self.buy_threshold_pct = buy_threshold_pct
         self.sell_threshold_pct = sell_threshold_pct
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.min_train_size = min_train_size
+        self.retrain_interval = max(1, retrain_interval)
     
     def predict(self, data: pd.DataFrame, training_cols: List[str]) -> pd.Series:
         """
@@ -66,17 +71,22 @@ class XGBoostModel:
             y = data['close'].diff().shift(-1).fillna(0)
             
             pred_series = pd.Series(0.0, index=data.index)
-            
-            # Use rolling window: for each day, train on previous data and predict
+
+            # Walk-forward: refit every `retrain_interval` bars on data up to
+            # that bar, reuse the fitted model for the bars in between.
+            model = None
+            last_fit = -1
             for i in range(self.min_train_size, len(data)):
                 try:
-                    model = XGBRegressor(
-                        n_estimators=self.n_estimators,
-                        max_depth=self.max_depth,
-                        random_state=42,
-                        verbosity=0
-                    )
-                    model.fit(X.iloc[:i], y.iloc[:i])
+                    if model is None or (i - last_fit) >= self.retrain_interval:
+                        model = XGBRegressor(
+                            n_estimators=self.n_estimators,
+                            max_depth=self.max_depth,
+                            random_state=42,
+                            verbosity=0
+                        )
+                        model.fit(X.iloc[:i], y.iloc[:i])
+                        last_fit = i
                     pred = model.predict(X.iloc[[i]])
                     pred_series.iloc[i] = pred[0]
                 except:
