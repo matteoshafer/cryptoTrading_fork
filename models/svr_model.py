@@ -57,7 +57,9 @@ class SVRModel:
         
         try:
             X = data[training_cols].fillna(0)
-            y = data['price_change'].fillna(0)
+            # Forward-shifted target: predict the *next* bar's change, not the
+            # already-realized change baked into this bar's own SMA/BB features.
+            y = data['close'].diff().shift(-1).fillna(0)
             
             pred_series = pd.Series(0.0, index=data.index)
             

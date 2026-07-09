@@ -61,14 +61,14 @@ Pick a coin and date range in the sidebar, click **Run Analysis**, and the dashb
 
 Each of the 10 models produces an independent buy/sell signal. The ensemble combines them:
 
-**Buy** when:
-- Predicted return ≥ threshold (default 0%)
-- At least N models are bullish (default 1)
+**Buy** when (all must hold):
+- Predicted return ≥ threshold (default 0.2%)
+- At least N models are bullish (default 4 of 10)
+- Price is above SMA-20
 
 **Sell** when:
-- Predicted return < threshold, OR
-- Too few models are bullish, OR
-- Price drops 2%+ below SMA-20
+- Predicted return < threshold (default -0.2%), OR
+- Too few models are bullish AND price is 2%+ below SMA-20
 
 **Risk management:**
 - Stop-loss: exit if price falls more than 2% from entry

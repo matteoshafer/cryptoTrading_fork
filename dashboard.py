@@ -66,15 +66,15 @@ def main():
         "Min Bullish Models for Buy",
         min_value=1,
         max_value=10,
-        value=1,
-        help="Minimum number of models that must be bullish to trigger a buy signal (lower = more trades)"
+        value=4,
+        help="Minimum number of models that must be bullish to trigger a buy signal (lower = more trades, but weaker consensus)"
     )
 
     buy_threshold = st.sidebar.slider(
         "Buy Return Threshold (%)",
         min_value=0.0,
         max_value=2.0,
-        value=0.0,
+        value=0.2,
         step=0.1,
         help="Minimum predicted return percentage to trigger buy"
     ) / 100.0
@@ -83,7 +83,7 @@ def main():
         "Max Bullish Models for Sell",
         min_value=0,
         max_value=5,
-        value=1,
+        value=3,
         help="Sell when bullish models drops to this level or below"
     )
 
@@ -91,7 +91,7 @@ def main():
         "Sell Return Threshold (%)",
         min_value=-2.0,
         max_value=0.0,
-        value=-0.3,
+        value=-0.2,
         step=0.1,
         help="Sell when predicted return drops below this percentage"
     ) / 100.0

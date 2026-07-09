@@ -70,11 +70,13 @@ class LLMSentimentModel:
         # Calculate from sentiment score if available
         if 'avg_sentiment' in data.columns:
             sentiment = data['avg_sentiment']
-            mean = sentiment.mean()
-            std = sentiment.std()
-            if std > 0:
-                return (sentiment - mean) / std
-            return pd.Series(0.0, index=data.index)
+            # Walk-forward (expanding) mean/std so early bars are normalized
+            # only against sentiment known up to that point, not the full
+            # dataset's future distribution.
+            expanding_mean = sentiment.expanding(min_periods=2).mean()
+            expanding_std = sentiment.expanding(min_periods=2).std()
+            z = (sentiment - expanding_mean) / expanding_std
+            return z.replace([np.inf, -np.inf], np.nan).fillna(0.0)
         
         # Return zeros if no sentiment data
         return pd.Series(0.0, index=data.index)

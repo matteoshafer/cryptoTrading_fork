@@ -16,26 +16,30 @@ class EnsembleModel:
     """
     
     def __init__(self,
-                 buy_threshold_return: float = 0.0,
-                 buy_min_bull_count: int = 1,
-                 sell_threshold_return: float = -0.001,
-                 sell_max_bull_count: int = 1,
-                 time_stop_days: int = 1,
-                 time_stop_min_return: float = 0.01,
-                 stop_loss_threshold: float = 0.99,
-                 max_hold_days: int = 2):
+                 buy_threshold_return: float = 0.002,
+                 buy_min_bull_count: int = 4,
+                 sell_threshold_return: float = -0.002,
+                 sell_max_bull_count: int = 3,
+                 time_stop_days: int = 5,
+                 time_stop_min_return: float = 0.05,
+                 stop_loss_threshold: float = 0.98,
+                 max_hold_days: int = 5):
         """
-        Initialize Ensemble Model with high-frequency trading rules.
+        Initialize Ensemble Model with daily-bar swing-trading rules.
+
+        Defaults require a real plurality of the 10 models to agree (4+) and a
+        non-trivial predicted edge (0.2%+) before entering — a single bullish
+        model out of ten is not a meaningful signal on daily data.
 
         Args:
-            buy_threshold_return: Minimum predicted return for buy signal (default: 0.0%)
-            buy_min_bull_count: Minimum number of bullish models for buy (default: 1)
-            sell_threshold_return: Maximum predicted return for sell signal (default: -0.1%)
-            sell_max_bull_count: Maximum number of bullish models for sell (default: 1)
-            time_stop_days: Days to hold before time stop check (default: 1)
-            time_stop_min_return: Minimum cumulative return for time stop (default: 1%)
-            stop_loss_threshold: Stop loss threshold as fraction of entry price (default: 1% loss)
-            max_hold_days: Maximum days to hold a position (default: 2)
+            buy_threshold_return: Minimum predicted return for buy signal (default: 0.2%)
+            buy_min_bull_count: Minimum number of bullish models for buy (default: 4)
+            sell_threshold_return: Maximum predicted return for sell signal (default: -0.2%)
+            sell_max_bull_count: Maximum number of bullish models for sell (default: 3)
+            time_stop_days: Days to hold before time stop check (default: 5)
+            time_stop_min_return: Minimum cumulative return for time stop (default: 5%)
+            stop_loss_threshold: Stop loss threshold as fraction of entry price (default: 2% loss)
+            max_hold_days: Maximum days to hold a position (default: 5)
         """
         self.max_hold_days = max_hold_days
         self.buy_threshold_return = buy_threshold_return
@@ -150,13 +154,13 @@ class EnsembleModel:
                     continue
                 
             else:
-                # No position - high frequency trading: buy when any model is bullish
+                # No position - require predicted edge, model consensus, and
+                # an uptrend filter (all three), matching the documented rules.
                 buy_condition_1 = predicted_return >= self.buy_threshold_return
                 buy_condition_2 = bull_count >= self.buy_min_bull_count
+                buy_condition_3 = current_price > sma20 if not pd.isna(sma20) else True
 
-                # Active trading: buy whenever minimum models are bullish
-                # This allows for frequent entry points
-                should_buy = buy_condition_2 and (buy_condition_1 or predicted_return > -0.005)
+                should_buy = buy_condition_1 and buy_condition_2 and buy_condition_3
                 
                 if should_buy:
                     # Open new position

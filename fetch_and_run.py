@@ -95,30 +95,36 @@ if __name__ == "__main__":
         print("RUNNING TRADING STRATEGY")
         print("="*60)
         
-        # Run the strategy - use October-December 2025 to allow model training
-        # (models need at least 50 data points to train)
-        result_df = run_trading_strategy(coin=coin, start_date='2025-10-01', end_date='2025-12-31', verbose=True)
-        
+        # Train on a rolling window ending today: models need at least 50 data
+        # points to train, and we analyze the most recent ANALYSIS_WINDOW_DAYS
+        # of that window so the backtest always reflects current conditions
+        # instead of a hardcoded historical range.
+        TRAIN_WINDOW_DAYS = 120
+        ANALYSIS_WINDOW_DAYS = 30
+        today = datetime.now()
+        train_start = (today - timedelta(days=TRAIN_WINDOW_DAYS)).strftime('%Y-%m-%d')
+        analysis_start = (today - timedelta(days=ANALYSIS_WINDOW_DAYS)).strftime('%Y-%m-%d')
+        result_df = run_trading_strategy(coin=coin, start_date=train_start, end_date=None, verbose=True)
+
         if not result_df.empty:
-            # Filter to December 2025 only for analysis
-            print("\nFiltering to December 2025 only...")
+            print(f"\nFiltering to the last {ANALYSIS_WINDOW_DAYS} days ({analysis_start} onward)...")
             if 'time' in result_df.columns:
                 result_df['date'] = pd.to_datetime(result_df['time'])
             else:
                 result_df['date'] = pd.to_datetime(result_df.index)
-            
-            dec_mask = (result_df['date'] >= '2025-12-01') & (result_df['date'] <= '2025-12-31')
-            result_df_dec = result_df[dec_mask].copy()
-            
-            if result_df_dec.empty:
-                print("No December 2025 data found in results")
+
+            recent_mask = result_df['date'] >= analysis_start
+            result_df_recent = result_df[recent_mask].copy()
+
+            if result_df_recent.empty:
+                print(f"No data found in the last {ANALYSIS_WINDOW_DAYS} days")
+                backtest_results = {}
             else:
-                print(f"December 2025 data points: {len(result_df_dec)} days")
-                
-                # Run backtest on December data only
-                print("\nRunning backtest on December 2025...")
-                backtest_results = backtest_strategy(result_df_dec, initial_capital=10000.0)
-            
+                print(f"Recent data points: {len(result_df_recent)} days")
+
+                print(f"\nRunning backtest on the last {ANALYSIS_WINDOW_DAYS} days...")
+                backtest_results = backtest_strategy(result_df_recent, initial_capital=10000.0)
+
             print("\n" + "="*50)
             print("BACKTEST RESULTS")
             print("="*50)
@@ -148,7 +154,8 @@ if __name__ == "__main__":
                     print(f"  Price: ${trade['price']:,.2f}")
                     print(f"  Shares: {trade['shares']:.6f}")
                     if 'return_pct' in trade:
-                        profit_loss = trade['shares'] * trade['price'] - (trade['shares'] * trade['price'] / (1 + trade['return_pct']))
+                        exit_value = trade['shares'] * trade['fill_price']
+                        profit_loss = exit_value - (exit_value / (1 + trade['return_pct']))
                         print(f"  Return: {trade['return_pct']*100:.2f}%")
                         print(f"  Profit/Loss: ${profit_loss:,.2f}")
                 print("="*50)

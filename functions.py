@@ -5,17 +5,17 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 import requests
-import torch
-from audioread.ffdec import ReadTimeoutError
-from bs4 import BeautifulSoup
-from serpapi import GoogleSearch
 from sklearn.model_selection import cross_val_score
 from sklearn.tree import DecisionTreeRegressor
-from torch.nn.functional import softmax
 from tqdm import tqdm
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import CONSTANTS
 from CONSTANTS import *
+
+# torch/transformers/bs4/serpapi are only needed by the offline news-scraping
+# and sentiment-labeling pipeline below, not by the trading strategy itself
+# (main.py / model_manager.py never import this module for those). Importing
+# them lazily, inside the functions that use them, means the strategy can run
+# without installing the heavier NLP/scraping dependencies.
 
 
 def preprocess(str):
@@ -25,6 +25,8 @@ def preprocess(str):
     return preprocessed
 
 def article_metadata(query):
+    from serpapi import GoogleSearch
+
     params = {
         "api_key": SERPAPI_KEY,
         "engine": "google_news",
@@ -61,6 +63,8 @@ def get_newspapers(query):
             article_df = pd.concat([header[intersection], article_df[intersection]])
             article_df = article_df.dropna(subset=['date'])
 
+        from bs4 import BeautifulSoup
+
         texts = []
         for index, row in tqdm(article_df.iterrows(), total=len(article_df)):
             text = ""
@@ -93,6 +97,10 @@ def sentimentAnalysis(newspapers_df, NEGATIVE, NEUTRAL, POSITIVE):
 
 def get_sentiment(text):
     """HELPER FUNCTION"""
+    import torch
+    from torch.nn.functional import softmax
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification
+
     MODEL = "mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis"
     tokenizer = AutoTokenizer.from_pretrained(MODEL)
     model = AutoModelForSequenceClassification.from_pretrained(MODEL)
@@ -273,11 +281,11 @@ def prices(product_id, period=30, granularity=86400, start=None, end=None):
         }
 
         try:
-            response = requests.get(url, params=params)
-        except ConnectionError:
+            response = requests.get(url, params=params, timeout=30)
+        except requests.exceptions.ConnectionError:
             print("No internet connection")
             return None, coin
-        except ReadTimeoutError:
+        except requests.exceptions.Timeout:
             print('Your wifi likely doesn\'t allow to access Coinbase API')
             return None, coin
 

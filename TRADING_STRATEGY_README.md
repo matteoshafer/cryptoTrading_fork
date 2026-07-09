@@ -55,14 +55,13 @@ Manages 10 individual ML models and generates buy/sell signals:
 Combines individual model signals with the following rules:
 
 #### Buy Conditions (ALL must be true):
-- `r_{t+1} > 0.005` (predicted return > 0.5%)
-- `bull_count >= 6` (at least 6 models are bullish)
+- `r_{t+1} > 0.002` (predicted return > 0.2%)
+- `bull_count >= 4` (at least 4 of 10 models are bullish)
 - `P_t > SMA20` (current price above 20-day moving average)
 
 #### Sell Conditions (ANY can be true):
-- `r_{t+1} < -0.005` (predicted return < -0.5%)
-- `bull_count <= 4` (4 or fewer models are bullish)
-- `P_t < SMA20` (current price below 20-day moving average)
+- `r_{t+1} < -0.002` (predicted return < -0.2%)
+- `bull_count <= 3` (3 or fewer models are bullish) AND `P_t < SMA20 * 0.98`
 
 #### Time Stop:
 - Position held `>= 5 days` AND cumulative return `> 5%`

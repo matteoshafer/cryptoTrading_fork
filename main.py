@@ -94,21 +94,21 @@ def run_trading_strategy(coin: str = None,
                         start_date: str = None,
                         end_date: str = None,
                         verbose: bool = True,
-                        buy_min_bull_count: int = 1,  # Active trading: 1 model needed
-                        buy_threshold_return: float = 0.0,  # Allow any positive predicted return
-                        sell_max_bull_count: int = 1,
+                        buy_min_bull_count: int = 4,
+                        buy_threshold_return: float = 0.002,
+                        sell_max_bull_count: int = 3,
                         sell_threshold_return: float = -0.002) -> pd.DataFrame:
     """
     Run the complete trading strategy with all models and ensemble.
-    
+
     Args:
         coin: Cryptocurrency symbol (e.g., 'BTC', 'ETH')
         start_date: Start date for analysis (YYYY-MM-DD format)
         end_date: End date for analysis (YYYY-MM-DD format)
         verbose: Whether to print progress information
-        buy_min_bull_count: Minimum number of bullish models for buy signal (default: 3)
+        buy_min_bull_count: Minimum number of bullish models for buy signal (default: 4)
         buy_threshold_return: Minimum predicted return for buy signal (default: 0.002 = 0.2%)
-        sell_max_bull_count: Maximum number of bullish models for sell signal (default: 2)
+        sell_max_bull_count: Maximum number of bullish models for sell signal (default: 3)
         sell_threshold_return: Maximum predicted return for sell signal (default: -0.002 = -0.2%)
         
     Returns:
@@ -203,58 +203,68 @@ def run_trading_strategy(coin: str = None,
     return result_df
 
 
-def backtest_strategy(result_df: pd.DataFrame, initial_capital: float = 10000.0) -> Dict:
+def backtest_strategy(result_df: pd.DataFrame, initial_capital: float = 10000.0,
+                       fee_pct: float = 0.005) -> Dict:
     """
     Backtest the trading strategy.
-    
+
     Args:
         result_df: DataFrame from run_trading_strategy()
         initial_capital: Starting capital
-        
+        fee_pct: Round-trip-relevant fee charged on each leg (buy and sell) as a
+            fraction of trade value, e.g. 0.005 = 0.5%. Coinbase Advanced Trade
+            taker fees run ~0.5-0.6% per side at low volume tiers, so the default
+            approximates realistic retail execution cost. Set to 0.0 to reproduce
+            the old (unrealistic) fee-free behavior.
+
     Returns:
         Dictionary with backtest results
     """
     if result_df.empty:
         return {}
-    
+
     capital = initial_capital
     position = 0  # Number of shares/coins held
     entry_price = 0.0
-    
+
     trades = []
-    
+
     for idx, row in result_df.iterrows():
         price = row['P_t']
-        
+
         # Buy signal
         if row['ensemble_buy'] == 1 and position == 0:
-            position = capital / price
-            entry_price = price
+            fill_price = price * (1 + fee_pct)
+            position = capital / fill_price
+            entry_price = fill_price
             capital = 0
             trades.append({
                 'date': idx,
                 'action': 'BUY',
                 'price': price,
+                'fill_price': fill_price,
                 'shares': position
             })
-        
+
         # Sell signal
         elif row['ensemble_sell'] == 1 and position > 0:
-            capital = position * price
-            return_pct = (price - entry_price) / entry_price
+            fill_price = price * (1 - fee_pct)
+            capital = position * fill_price
+            return_pct = (fill_price - entry_price) / entry_price
             trades.append({
                 'date': idx,
                 'action': 'SELL',
                 'price': price,
+                'fill_price': fill_price,
                 'shares': position,
                 'return_pct': return_pct
             })
             position = 0
             entry_price = 0.0
-    
+
     # Calculate final value
     if position > 0:
-        final_price = result_df['P_t'].iloc[-1]
+        final_price = result_df['P_t'].iloc[-1] * (1 - fee_pct)
         final_capital = position * final_price
     else:
         final_capital = capital
@@ -383,7 +393,8 @@ def main():
                 print(f"  Price: ${trade['price']:,.2f}")
                 print(f"  Shares: {trade['shares']:.6f}")
                 if 'return_pct' in trade:
-                    profit_loss = trade['shares'] * trade['price'] - (trade['shares'] * trade['price'] / (1 + trade['return_pct']))
+                    exit_value = trade['shares'] * trade['fill_price']
+                    profit_loss = exit_value - (exit_value / (1 + trade['return_pct']))
                     print(f"  Return: {trade['return_pct']*100:.2f}%")
                     print(f"  Profit/Loss: ${profit_loss:,.2f}")
             print("="*50)
