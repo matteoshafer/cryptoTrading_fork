@@ -6,4 +6,7 @@ OBV
 BB_Lower
 BB_Middle
 BB_Upper
+RSI
+MACD
+MACD_Hist
 avg_sentiment

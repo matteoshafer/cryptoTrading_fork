@@ -116,9 +116,10 @@ class ModelManager:
             training_cols: List of column names to use for training
         """
         if training_cols is None:
-            training_cols = ['volume', 'SMA_20', 'SMA_50', 'Volume_MA_20', 'OBV', 
-                           'BB_Lower', 'BB_Middle', 'BB_Upper', 'avg_sentiment']
-        
+            training_cols = ['volume', 'SMA_20', 'SMA_50', 'Volume_MA_20', 'OBV',
+                           'BB_Lower', 'BB_Middle', 'BB_Upper',
+                           'RSI', 'MACD', 'MACD_Hist', 'avg_sentiment']
+
         # Ensure we have a target column (price change)
         if 'close' in data.columns:
             if 'price_change' not in data.columns:
@@ -139,8 +140,9 @@ class ModelManager:
             DataFrame with signals for each model and ensemble inputs
         """
         if training_cols is None:
-            training_cols = ['volume', 'SMA_20', 'SMA_50', 'Volume_MA_20', 'OBV', 
-                            'BB_Lower', 'BB_Middle', 'BB_Upper', 'avg_sentiment']
+            training_cols = ['volume', 'SMA_20', 'SMA_50', 'Volume_MA_20', 'OBV',
+                            'BB_Lower', 'BB_Middle', 'BB_Upper',
+                            'RSI', 'MACD', 'MACD_Hist', 'avg_sentiment']
             training_cols = [col for col in training_cols if col in data.columns]
         
         # Ensure required columns exist
@@ -220,45 +222,132 @@ class ModelManager:
         signals_df['TCN_buy'] = tcn_buy
         signals_df['TCN_sell'] = tcn_sell
         
-        # Calculate bull_count (number of models with buy signals)
-        buy_cols = [col for col in signals_df.columns if col.endswith('_buy')]
-        signals_df['bull_count'] = signals_df[buy_cols].sum(axis=1)
-        
-        # Calculate predicted return for ensemble (average of all predictions).
-        # 'prophet_pred_change' is included here, so Prophet participates in
-        # the average alongside the other nine models.
-        pred_change_cols = [col for col in signals_df.columns if 'pred_change' in col or col == 'sentiment_z']
-        if len(pred_change_cols) > 0:
-            # Normalize predictions to returns
-            pred_returns = []
-            for col in pred_change_cols:
-                if col == 'sentiment_z':
-                    # Convert sentiment to return proxy
-                    pred_returns.append((signals_df[col] * 0.01).values)  # Scale sentiment
-                else:
-                    pred_returns.append((signals_df[col] / signals_df['P_t']).values)
+        # Explicit (prediction column, buy column) pairs in one fixed model
+        # order, shared by the prediction matrix, the vote matrix and the
+        # reliability weights so rows always line up model-for-model.
+        model_cols = [
+            ('sentiment_z', 'LLM_Sentiment_buy'),
+            ('xgb_pred_change', 'XGBoost_buy'),
+            ('gbm_pred_change', 'GBM_buy'),
+            ('arima_pred_change', 'ARIMA_buy'),
+            ('prophet_pred_change', 'Prophet_buy'),
+            ('rf_pred_change', 'RandomForest_buy'),
+            ('lgbm_pred_change', 'LightGBM_buy'),
+            ('svr_pred_change', 'SVR_buy'),
+            ('rnn_pred_change', 'LSTM_GRU_buy'),
+            ('tcn_pred_change', 'TCN_buy'),
+        ]
+        buy_cols = [b for _, b in model_cols]
 
-            # Stack as numpy array to avoid index alignment issues, then average across models
-            pred_returns_arr = np.vstack(pred_returns)  # shape: (n_models, n_samples)
-            signals_df['predicted_return'] = pred_returns_arr.mean(axis=0)
-        else:
-            pred_returns_arr = np.zeros((0, len(signals_df)))
-            signals_df['predicted_return'] = 0.0
+        # Raw (unweighted) bull_count, kept for display and back-compat
+        signals_df['bull_count'] = signals_df[buy_cols].sum(axis=1)
+
+        # Per-model predicted returns matrix, shape (n_models, n_bars).
+        # 'prophet_pred_change' is included here, so Prophet participates
+        # alongside the other nine models.
+        pred_returns = []
+        for pred_col, _ in model_cols:
+            if pred_col == 'sentiment_z':
+                # Convert sentiment z-score to a return proxy
+                pred_returns.append((signals_df[pred_col] * 0.01).values)
+            else:
+                pred_returns.append((signals_df[pred_col] / signals_df['P_t']).values)
+        pred_returns_arr = np.vstack(pred_returns)
+        buy_matrix = signals_df[buy_cols].values.T.astype(float)
+
+        # Walk-forward reliability weighting: each model's vote and predicted
+        # return are weighted by its own rolling hit rate over already-resolved
+        # calls (never future ones). A model that has been coin-flip accurate
+        # gets weight 1.0; historically bad models are downweighted (floor
+        # 0.25), historically strong ones upweighted (cap 1.75). Models whose
+        # optional dependency is missing (all-zero predictions) get weight 0.
+        price = signals_df['P_t'].values.astype(float)
+        hit_rates = self._rolling_hit_rates(pred_returns_arr, price)
+        active_mask = np.any(pred_returns_arr != 0, axis=1)
+        weights = self._reliability_weights(hit_rates, active_mask)
+
+        w_sum = weights.sum(axis=0)
+        safe_w_sum = np.where(w_sum > 0, w_sum, 1.0)
+        signals_df['predicted_return'] = np.where(
+            w_sum > 0, (weights * pred_returns_arr).sum(axis=0) / safe_w_sum, 0.0)
+
+        # Reliability-weighted bull count, rescaled to the nominal 10-model
+        # panel so existing count thresholds (e.g. "buy at 4+") keep their
+        # meaning regardless of how many optional models are installed: it is
+        # the weighted fraction of *active* models voting buy, times 10. With
+        # all 10 models active and neutral weights it equals bull_count.
+        weighted_buy_frac = np.where(
+            w_sum > 0, (weights * buy_matrix).sum(axis=0) / safe_w_sum, 0.0)
+        signals_df['bull_count_weighted'] = weighted_buy_frac * len(model_cols)
 
         # Add SMA20 for ensemble
         signals_df['SMA_20'] = data['SMA_20'] if 'SMA_20' in data.columns else data['close'].rolling(20).mean()
 
+        # Walk-forward realized volatility (rolling std of daily returns up to
+        # and including bar t — no future bars). The ensemble uses this to
+        # scale its entry/exit thresholds to the current regime.
+        signals_df['realized_vol'] = (
+            signals_df['P_t'].pct_change().rolling(self.VOL_WINDOW, min_periods=10).std())
+
         # Ensemble confidence score (0-100). Pure statistics computed offline
         # from the models' own outputs — no network calls and no LLM inference
         # anywhere in this path.
-        self._add_confidence(signals_df, pred_returns_arr)
+        self._add_confidence(signals_df, pred_returns_arr, hit_rates, active_mask)
 
         return signals_df
 
     # Rolling window (bars) used for each model's walk-forward hit rate.
     HIT_RATE_WINDOW = 30
+    # Rolling window (bars) for realized volatility used in regime scaling.
+    VOL_WINDOW = 20
+    # Reliability-weight floor/cap for active models.
+    WEIGHT_FLOOR = 0.25
+    WEIGHT_CAP = 1.75
 
-    def _add_confidence(self, signals_df: pd.DataFrame, pred_matrix: np.ndarray):
+    def _rolling_hit_rates(self, pred_matrix: np.ndarray, price: np.ndarray) -> np.ndarray:
+        """
+        Rolling walk-forward hit rate per model.
+
+        For each model m and bar t: over the last HIT_RATE_WINDOW *resolved*
+        calls before t, the fraction where sign(prediction at bar s) matched
+        the realized s -> s+1 price move. Calls are shifted one bar before
+        rolling so the rate at bar t only reflects moves already realized by
+        bar t — no lookahead. Bars where the model made no call (prediction
+        exactly 0) are excluded. NaN during warm-up (< 5 resolved calls).
+        """
+        n = pred_matrix.shape[1]
+        next_move = np.full(n, np.nan)
+        next_move[:-1] = price[1:] - price[:-1]
+
+        hit_rates = np.full(pred_matrix.shape, np.nan)
+        for m in range(pred_matrix.shape[0]):
+            called = pred_matrix[m] != 0
+            correct = (np.sign(pred_matrix[m]) == np.sign(next_move)).astype(float)
+            calls = pd.Series(np.where(called, correct, np.nan))
+            # A call at bar t resolves at bar t+1, so shift by one bar before
+            # rolling: the rate at bar t only reflects already-settled calls.
+            hit_rates[m] = calls.shift(1).rolling(
+                self.HIT_RATE_WINDOW, min_periods=5).mean().values
+        return hit_rates
+
+    def _reliability_weights(self, hit_rates: np.ndarray,
+                             active_mask: np.ndarray) -> np.ndarray:
+        """
+        Map rolling hit rates to per-model, per-bar voting weights.
+
+        Linear map centered on the coin-flip rate: weight = 2 * hit_rate,
+        clipped to [WEIGHT_FLOOR, WEIGHT_CAP], so a 50% model keeps weight
+        1.0. Warm-up bars (NaN hit rate) get neutral weight 1.0 — no model is
+        penalized before it has a track record. Inactive models get 0.
+        """
+        w = np.clip(2.0 * hit_rates, self.WEIGHT_FLOOR, self.WEIGHT_CAP)
+        w = np.where(np.isnan(hit_rates), 1.0, w)
+        w[~active_mask] = 0.0
+        return w
+
+    def _add_confidence(self, signals_df: pd.DataFrame, pred_matrix: np.ndarray,
+                        hit_rates: np.ndarray = None,
+                        active_mask: np.ndarray = None):
         """
         Attach a quantitative confidence score to every bar.
 
@@ -287,8 +376,8 @@ class ModelManager:
         """
         n = len(signals_df)
 
-        active_mask = np.array([np.any(pred_matrix[m] != 0)
-                                for m in range(pred_matrix.shape[0])], dtype=bool)
+        if active_mask is None:
+            active_mask = np.any(pred_matrix != 0, axis=1)
         n_active = int(active_mask.sum())
         signals_df['active_models'] = n_active
 
@@ -312,24 +401,16 @@ class ModelManager:
         else:
             c_snr = np.full(n, 0.5)  # dispersion undefined with one model
 
-        # 3) Rolling walk-forward hit rate per active model
+        # 3) Rolling walk-forward hit rate per active model (reuses the
+        # matrix computed for reliability weighting when available)
         price = signals_df['P_t'].values.astype(float)
-        next_move = np.full(n, np.nan)
-        next_move[:-1] = price[1:] - price[:-1]
-
-        hit_rates = np.full((preds.shape[0], n), np.nan)
-        for m in range(preds.shape[0]):
-            called = preds[m] != 0
-            correct = (np.sign(preds[m]) == np.sign(next_move)).astype(float)
-            calls = pd.Series(np.where(called, correct, np.nan))
-            # A call at bar t resolves at bar t+1, so shift by one bar before
-            # rolling: the rate at bar t only reflects already-settled calls.
-            hit_rates[m] = calls.shift(1).rolling(
-                self.HIT_RATE_WINDOW, min_periods=5).mean().values
+        if hit_rates is None:
+            hit_rates = self._rolling_hit_rates(pred_matrix, price)
+        active_hit_rates = hit_rates[active_mask]
 
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')  # all-NaN warm-up columns
-            avg_hit_rate = np.nanmean(hit_rates, axis=0)
+            avg_hit_rate = np.nanmean(active_hit_rates, axis=0)
         # Map: <= 40% hit rate -> 0, >= 65% -> 1; NaN (warm-up) -> neutral 0.5
         c_hit = np.clip((avg_hit_rate - 0.40) / 0.25, 0.0, 1.0)
         c_hit = np.where(np.isnan(avg_hit_rate), 0.5, c_hit)

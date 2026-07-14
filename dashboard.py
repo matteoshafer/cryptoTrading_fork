@@ -66,8 +66,8 @@ def main():
         "Min Bullish Models for Buy",
         min_value=1,
         max_value=10,
-        value=4,
-        help="Minimum number of models that must be bullish to trigger a buy signal (lower = more trades, but weaker consensus)"
+        value=5,
+        help="Minimum reliability-weighted bull count (scaled to a 10-model panel) to trigger a buy signal (lower = more trades, but weaker consensus)"
     )
 
     buy_threshold = st.sidebar.slider(

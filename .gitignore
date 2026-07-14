@@ -5,3 +5,4 @@ venv/
 venv_mcp/
 *.log
 newspapers/
+telegram_state.json

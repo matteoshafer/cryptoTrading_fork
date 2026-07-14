@@ -18,20 +18,23 @@ class GBMModel:
                  buy_threshold_pct: float = 0.01,  # 1% gain
                  sell_threshold_pct: float = -0.005,  # 0.5% drop
                  n_paths: int = 100,
-                 min_train_size: int = 20):
+                 min_train_size: int = 20,
+                 seed: int = 42):
         """
         Initialize GBM Model.
-        
+
         Args:
             buy_threshold_pct: Buy threshold as percentage (default: 0.01 = 1%)
             sell_threshold_pct: Sell threshold as percentage (default: -0.005 = -0.5%)
             n_paths: Number of simulation paths
             min_train_size: Minimum training data size
+            seed: RNG seed so backtests are reproducible run-to-run
         """
         self.buy_threshold_pct = buy_threshold_pct
         self.sell_threshold_pct = sell_threshold_pct
         self.n_paths = n_paths
         self.min_train_size = min_train_size
+        self.seed = seed
     
     def predict(self, data: pd.DataFrame) -> pd.Series:
         """
@@ -49,29 +52,31 @@ class GBMModel:
         try:
             prices = data['close'].values
             pred_series = pd.Series(0.0, index=data.index)
-            
+
             # Use rolling window: for each day, use previous data to estimate parameters
             T = 1  # Forecast horizon (1 day)
-            
+
+            # Dedicated seeded generator: reproducible backtests without
+            # touching global numpy RNG state.
+            rng = np.random.default_rng(self.seed)
+
             for i in range(self.min_train_size, len(data)):
                 try:
                     window_prices = prices[:i+1]
                     window_returns = np.diff(window_prices) / window_prices[:-1]
-                    
+
                     if len(window_returns) < 5:
                         continue
-                    
+
                     mu = np.mean(window_returns)  # Drift
                     sigma = np.std(window_returns)  # Volatility
                     current_price = window_prices[-1]
-                    
-                    # Simulate paths
-                    paths = []
-                    for _ in range(self.n_paths):
-                        z = np.random.normal(0, 1)
-                        future_price = current_price * np.exp((mu - 0.5 * sigma**2) * T + sigma * np.sqrt(T) * z)
-                        paths.append(future_price)
-                    
+
+                    # Simulate paths (vectorized)
+                    z = rng.standard_normal(self.n_paths)
+                    paths = current_price * np.exp(
+                        (mu - 0.5 * sigma**2) * T + sigma * np.sqrt(T) * z)
+
                     mean_pred = np.mean(paths)
                     pred_series.iloc[i] = mean_pred - current_price  # Return as price change
                 except:

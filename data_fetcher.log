@@ -8,3 +8,21 @@
 2026-01-28 20:04:21,616 - INFO - Combined data: 759 total records
 2026-01-28 20:04:21,650 - INFO - Technical indicators calculated
 2026-01-28 20:04:21,670 - INFO - Data saved to fulldata\BTC_df.csv
+2026-07-13 13:57:57,662 - INFO - Configuration saved to fetcher_config.json
+2026-07-13 13:57:57,662 - INFO - Running single update for BTC
+2026-07-13 13:57:57,665 - INFO - Loaded 365 existing records from fulldata/BTC_df.csv
+2026-07-13 13:57:57,666 - INFO - Last data point: 2026-01-28
+2026-07-13 13:57:57,666 - INFO - Fetching BTC data from 2026-01-29 to 2026-07-13
+2026-07-13 13:57:59,231 - INFO - Fetched 166 total candles
+2026-07-13 13:57:59,232 - INFO - Combined data: 531 total records
+2026-07-13 13:57:59,234 - INFO - Technical indicators calculated
+2026-07-13 13:57:59,239 - INFO - Data saved to fulldata/BTC_df.csv
+2026-07-13 13:59:05,093 - INFO - Configuration saved to fetcher_config.json
+2026-07-13 13:59:05,093 - INFO - Running single update for ETH
+2026-07-13 13:59:05,097 - INFO - Loaded 370 existing records from fulldata/ETH_df.csv
+2026-07-13 13:59:05,097 - INFO - Last data point: 2025-05-07
+2026-07-13 13:59:05,097 - INFO - Fetching ETH data from 2025-05-08 to 2026-07-13
+2026-07-13 13:59:06,760 - INFO - Fetched 432 total candles
+2026-07-13 13:59:06,764 - INFO - Combined data: 797 total records
+2026-07-13 13:59:06,771 - INFO - Technical indicators calculated
+2026-07-13 13:59:06,781 - INFO - Data saved to fulldata/ETH_df.csv

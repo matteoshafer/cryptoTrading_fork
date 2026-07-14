@@ -56,22 +56,43 @@ Manages 10 individual ML models and generates buy/sell signals:
 
 ### 2. Ensemble Model (`ensemble_model.py`)
 
-Combines individual model signals with the following rules:
+Combines individual model signals with the following rules.
 
-#### Buy Conditions (ALL must be true):
-- `r_{t+1} > 0.002` (predicted return > 0.2%)
-- `bull_count >= 4` (at least 4 of 10 models are bullish)
+**Reliability-weighted voting:** each model's vote and predicted return are
+weighted by its own rolling walk-forward hit rate (last 30 resolved calls —
+did the sign of its prediction match the next bar's realized move?). A
+coin-flip model keeps weight 1.0; weights are clipped to [0.25, 1.75];
+models whose optional dependency is missing get weight 0. `bull_count_weighted`
+is the weighted fraction of *active* models voting buy, rescaled to the
+nominal 10-model panel, so the thresholds below keep their meaning no matter
+how many optional models are installed. Only already-resolved calls are used —
+no lookahead.
+
+**Regime-aware thresholds:** the fixed return thresholds are floors; the
+effective thresholds scale with realized 20-day volatility (`vol`), so choppy
+markets demand a bigger predicted edge to enter and small wobbles don't force
+an exit.
+
+#### Buy Conditions (ALL must be true, on 2 consecutive bars):
+- `r_{t+1} >= max(0.002, 0.3 * vol)` (volatility-scaled predicted edge)
+- `bull_count_weighted >= 5` (half the active panel, reliability-weighted)
 - `P_t > SMA20` (current price above 20-day moving average)
 
 #### Sell Conditions (ANY can be true):
-- `r_{t+1} < -0.002` (predicted return < -0.2%)
-- `bull_count <= 3` (3 or fewer models are bullish) AND `P_t < SMA20 * 0.98`
+- `r_{t+1} < min(-0.002, -0.25 * vol)` (volatility-scaled)
+- `bull_count_weighted <= 3` AND `P_t < SMA20 * 0.98`
 
-#### Time Stop:
+#### Time Stop (take profit):
 - Position held `>= 5 days` AND cumulative return `> 5%`
+- (The old forced exit after 5 days regardless of profit is disabled by
+  default — with ~1% round-trip fees it was pure churn.)
 
-#### Stop-Loss:
-- `P_t < EntryPrice × 0.98` (2% loss from entry price)
+#### Stop-Loss (volatility-scaled at entry):
+- `P_t < EntryPrice × (1 - stop)` where `stop = clip(1.5 * vol, 2%, 12%)`
+
+Held-out validation of these ensemble parameters (80% tuning / 20% held-out
+chronological split, models always walk-forward) lives in
+`validate_ensemble.py`.
 
 ### Signal Confidence Score
 

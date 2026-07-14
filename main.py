@@ -86,18 +86,24 @@ def get_training_columns() -> list:
         return columns
     except FileNotFoundError:
         # Default columns if file doesn't exist
-        return ['volume', 'SMA_20', 'SMA_50', 'Volume_MA_20', 'OBV', 
-                'BB_Lower', 'BB_Middle', 'BB_Upper', 'avg_sentiment']
+        return ['volume', 'SMA_20', 'SMA_50', 'Volume_MA_20', 'OBV',
+                'BB_Lower', 'BB_Middle', 'BB_Upper',
+                'RSI', 'MACD', 'MACD_Hist', 'avg_sentiment']
 
 
 def run_trading_strategy(coin: str = None,
                         start_date: str = None,
                         end_date: str = None,
                         verbose: bool = True,
-                        buy_min_bull_count: int = 4,
+                        buy_min_bull_count: int = 5,
                         buy_threshold_return: float = 0.002,
                         sell_max_bull_count: int = 3,
-                        sell_threshold_return: float = -0.002) -> pd.DataFrame:
+                        sell_threshold_return: float = -0.002,
+                        buy_vol_mult: float = 0.3,
+                        sell_vol_mult: float = 0.25,
+                        buy_confirm_bars: int = 2,
+                        stop_vol_mult: float = 1.5,
+                        use_weighted_consensus: bool = True) -> pd.DataFrame:
     """
     Run the complete trading strategy with all models and ensemble.
 
@@ -106,11 +112,22 @@ def run_trading_strategy(coin: str = None,
         start_date: Start date for analysis (YYYY-MM-DD format)
         end_date: End date for analysis (YYYY-MM-DD format)
         verbose: Whether to print progress information
-        buy_min_bull_count: Minimum number of bullish models for buy signal (default: 4)
-        buy_threshold_return: Minimum predicted return for buy signal (default: 0.002 = 0.2%)
+        buy_min_bull_count: Minimum (reliability-weighted) bull count for a buy
+            signal (default: 5 = half the active panel)
+        buy_threshold_return: Floor on predicted return for buy signal (default: 0.002 = 0.2%)
         sell_max_bull_count: Maximum number of bullish models for sell signal (default: 3)
-        sell_threshold_return: Maximum predicted return for sell signal (default: -0.002 = -0.2%)
-        
+        sell_threshold_return: Floor on predicted return for sell signal (default: -0.002 = -0.2%)
+        buy_vol_mult: Entry threshold as multiple of realized daily volatility
+            (regime-aware; the fixed threshold above is the floor). Default 0.3.
+        sell_vol_mult: Exit threshold as multiple of realized daily volatility.
+            Default 0.25.
+        buy_confirm_bars: Consecutive bars the buy condition must hold before
+            entering (default 2; 1 = off).
+        stop_vol_mult: Stop-loss distance as multiple of realized daily
+            volatility at entry (default 1.5; 0 = fixed 2% stop).
+        use_weighted_consensus: Weight each model's vote by its walk-forward
+            hit rate (default True).
+
     Returns:
         DataFrame with all signals and trading decisions
     """
@@ -173,8 +190,11 @@ def run_trading_strategy(coin: str = None,
     # Initialize Ensemble Model
     if verbose:
         print("Initializing Ensemble Model...")
-        print(f"  Buy conditions: {buy_min_bull_count}+ models bullish, return > {buy_threshold_return*100:.2f}%")
-        print(f"  Sell conditions: {sell_max_bull_count} or fewer models bullish, return < {sell_threshold_return*100:.2f}%")
+        print(f"  Buy conditions: weighted bull count >= {buy_min_bull_count}, "
+              f"return >= max({buy_threshold_return*100:.2f}%, {buy_vol_mult:.2f} x daily vol), "
+              f"held {buy_confirm_bars} consecutive bar(s)")
+        print(f"  Sell conditions: weighted bull count <= {sell_max_bull_count} (below SMA20), "
+              f"or return < min({sell_threshold_return*100:.2f}%, -{sell_vol_mult:.2f} x daily vol)")
     ensemble = EnsembleModel(
         buy_threshold_return=buy_threshold_return,
         buy_min_bull_count=buy_min_bull_count,
@@ -182,7 +202,12 @@ def run_trading_strategy(coin: str = None,
         sell_max_bull_count=sell_max_bull_count,
         time_stop_days=5,             # Held >= 5 days
         time_stop_min_return=0.05,   # cumulative return > 5%
-        stop_loss_threshold=0.98      # P_t < EntryPrice * 0.98
+        stop_loss_threshold=0.98,     # floor: stop never tighter than 2%
+        buy_vol_mult=buy_vol_mult,
+        sell_vol_mult=sell_vol_mult,
+        buy_confirm_bars=buy_confirm_bars,
+        stop_vol_mult=stop_vol_mult,
+        use_weighted_consensus=use_weighted_consensus
     )
     
     # Generate ensemble signals
