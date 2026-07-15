@@ -13,7 +13,9 @@ from typing import List, Optional
 try:
     from lightgbm import LGBMRegressor
     LIGHTGBM_AVAILABLE = True
-except ImportError:
+except Exception:
+    # Broad except: same rationale as xgboost_model.py — a broken native
+    # library at import time isn't always an ImportError.
     LIGHTGBM_AVAILABLE = False
 
 

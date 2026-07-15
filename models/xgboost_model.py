@@ -13,7 +13,10 @@ from typing import List, Optional
 try:
     from xgboost import XGBRegressor
     XGBOOST_AVAILABLE = True
-except ImportError:
+except Exception:
+    # Broad except: xgboost can be pip-installed but still fail at import
+    # time (e.g. XGBoostError when libomp isn't present on macOS), which
+    # is not an ImportError and would otherwise crash the whole pipeline.
     XGBOOST_AVAILABLE = False
 
 

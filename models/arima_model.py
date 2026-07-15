@@ -13,7 +13,7 @@ from typing import Optional, Tuple
 try:
     from statsmodels.tsa.arima.model import ARIMA
     STATSMODELS_AVAILABLE = True
-except ImportError:
+except Exception:
     STATSMODELS_AVAILABLE = False
 
 

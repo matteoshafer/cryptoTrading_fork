@@ -13,7 +13,7 @@ try:
     import torch
     from torch import nn
     TORCH_AVAILABLE = True
-except ImportError:
+except Exception:
     torch = None
     nn = None
     TORCH_AVAILABLE = False

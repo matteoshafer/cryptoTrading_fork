@@ -13,7 +13,7 @@ from typing import Optional, Tuple
 try:
     from prophet import Prophet
     PROPHET_AVAILABLE = True
-except ImportError:
+except Exception:
     PROPHET_AVAILABLE = False
 
 

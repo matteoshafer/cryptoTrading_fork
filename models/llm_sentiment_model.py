@@ -15,7 +15,7 @@ try:
     from transformers import AutoTokenizer, AutoModelForSequenceClassification
     from torch.nn.functional import softmax
     TORCH_AVAILABLE = True
-except ImportError:
+except Exception:
     TORCH_AVAILABLE = False
 
 

@@ -26,3 +26,32 @@
 2026-07-13 13:59:06,764 - INFO - Combined data: 797 total records
 2026-07-13 13:59:06,771 - INFO - Technical indicators calculated
 2026-07-13 13:59:06,781 - INFO - Data saved to fulldata/ETH_df.csv
+2026-07-14 10:10:54,434 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-14 10:10:54,435 - INFO - Last data point: 2026-07-13
+2026-07-14 10:10:54,435 - INFO - Fetching BTC data from 2026-07-14 to 2026-07-14
+2026-07-14 10:10:55,721 - INFO - Fetched 1 total candles
+2026-07-14 10:10:55,725 - INFO - Combined data: 401 total records
+2026-07-14 10:10:55,730 - INFO - Technical indicators calculated
+2026-07-14 10:10:55,744 - INFO - Data saved to fulldata/BTC_df.csv
+2026-07-14 10:11:03,191 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-14 10:11:03,191 - INFO - Last data point: 2026-07-13
+2026-07-14 10:11:03,191 - INFO - Fetching ETH data from 2026-07-14 to 2026-07-14
+2026-07-14 10:11:03,944 - INFO - Fetched 1 total candles
+2026-07-14 10:11:03,948 - INFO - Combined data: 401 total records
+2026-07-14 10:11:03,952 - INFO - Technical indicators calculated
+2026-07-14 10:11:03,963 - INFO - Data saved to fulldata/ETH_df.csv
+2026-07-14 22:51:24,273 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-14 22:51:24,275 - INFO - Last data point: 2026-07-14
+2026-07-14 22:51:24,275 - INFO - Data is already up to date
+2026-07-14 22:51:44,707 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-14 22:51:44,707 - INFO - Last data point: 2026-07-14
+2026-07-14 22:51:44,707 - INFO - Data is already up to date
+2026-07-14 22:52:39,053 - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-07-14 22:52:39,056 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-14 22:52:39,056 - INFO - Last data point: 2026-07-14
+2026-07-14 22:52:39,056 - INFO - Data is already up to date
+2026-07-14 22:53:08,917 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-14 22:53:08,917 - INFO - Last data point: 2026-07-14
+2026-07-14 22:53:08,917 - INFO - Data is already up to date
+2026-07-14 22:53:38,771 - INFO - Added job "Check signals every 4.0h, digest at 9:00" to job store "default"
+2026-07-14 22:53:38,771 - INFO - Scheduler started

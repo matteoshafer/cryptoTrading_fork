@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 venv/
 venv_mcp/
+venv_telegram/
 *.log
 newspapers/
 telegram_state.json
