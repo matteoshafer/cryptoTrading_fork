@@ -128,10 +128,35 @@ It fetches fresh data itself (via `live_data_fetcher.py`), then sends:
 - **A change alert** — immediately, whenever a coin's signal flips (e.g.
   HOLD → BUY), checked every `--interval-hours`.
 
-Credentials go in `.env` (gitignored); last-seen signal state persists in
-`telegram_state.json` (also gitignored — runtime state, not config). No
-LLM/API calls of any kind — this only talks to the Telegram Bot API and the
-existing walk-forward signal pipeline.
+Once a day (not on every check — it's slow and doesn't need to be that
+fresh) it also runs `update_sentiment.py`, which scrapes recent news via
+free Google News RSS, scores it with a local RoBERTa classifier, and merges
+a daily-aggregated `avg_sentiment` value into `fulldata/{coin}_df.csv` so
+the LLM-Sentiment model has real data to work with. Pass `--no-sentiment`
+to skip this. (This replaces `functions.newspaper_sentiment_pipeline()`,
+which had two real bugs: it reloaded the sentiment model from scratch per
+article, and its merge duplicated every price row once per matching
+article instead of aggregating to one value per day.)
+
+Credentials go in `.env` (gitignored); last-seen signal/sentiment state
+persists in `telegram_state.json` (also gitignored — runtime state, not
+config). No LLM/API calls of any kind beyond the local, offline RoBERTa
+classifier — this only talks to the Telegram Bot API, Google News RSS, and
+the existing walk-forward signal pipeline.
+
+### Running unattended (macOS)
+
+To keep `telegram_notify.py --schedule` running in the background across
+reboots, load it as a `launchd` agent:
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.matteoshafer.cryptotrading-telegram.plist
+launchctl print gui/$(id -u)/com.matteoshafer.cryptotrading-telegram   # check status
+launchctl bootout gui/$(id -u)/com.matteoshafer.cryptotrading-telegram # stop it
+```
+
+It restarts automatically on crash (`KeepAlive`) and writes to
+`telegram_notify.out.log` / `telegram_notify.err.log`.
 
 ## Project Structure
 

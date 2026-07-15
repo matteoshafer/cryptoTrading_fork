@@ -207,13 +207,30 @@ def format_alert(coin: str, old_signal: str, sig: dict) -> str:
 
 # ── Core check-and-notify ───────────────────────────────────────────────────
 
-def run_once(coins=("BTC", "ETH"), digest_hour: int = 9, lookback_days: int = 400):
+def run_once(coins=("BTC", "ETH"), digest_hour: int = 9, lookback_days: int = 400,
+             update_sentiment_daily: bool = True):
     token, chat_id = get_credentials()
     state = load_state()
     today = date.today().isoformat()
     now = datetime.now()
 
     digest_due = state.get("last_digest_date") != today and now.hour >= digest_hour
+
+    # Refresh avg_sentiment from fresh news once per day, before computing
+    # signals, so the LLM-Sentiment model gets today's data on this run
+    # rather than a day late. Scraping is slow (dozens of HTTP fetches + a
+    # local model pass) and Google News RSS doesn't need re-hitting every
+    # few hours, so this deliberately doesn't run on every scheduled check.
+    sentiment_due = update_sentiment_daily and state.get("last_sentiment_date") != today
+    if sentiment_due:
+        try:
+            from update_sentiment import update_sentiment
+            for coin in coins:
+                print(f"Updating sentiment for {coin}...")
+                update_sentiment(coin)
+            state["last_sentiment_date"] = today
+        except Exception as e:
+            print(f"  Sentiment update failed (non-fatal, continuing): {e}")
 
     signals = {}
     for coin in coins:
@@ -248,19 +265,20 @@ def run_once(coins=("BTC", "ETH"), digest_hour: int = 9, lookback_days: int = 40
     print("Done.")
 
 
-def run_scheduler(coins, interval_hours: int, digest_hour: int, lookback_days: int):
+def run_scheduler(coins, interval_hours: int, digest_hour: int, lookback_days: int,
+                  update_sentiment_daily: bool = True):
     try:
         from apscheduler.schedulers.blocking import BlockingScheduler
         from apscheduler.triggers.interval import IntervalTrigger
     except ImportError:
         print("APScheduler not installed. Install with: pip install apscheduler")
         print("Running a single check instead...")
-        run_once(coins, digest_hour, lookback_days)
+        run_once(coins, digest_hour, lookback_days, update_sentiment_daily)
         return
 
     scheduler = BlockingScheduler()
     scheduler.add_job(
-        lambda: run_once(coins, digest_hour, lookback_days),
+        lambda: run_once(coins, digest_hour, lookback_days, update_sentiment_daily),
         trigger=IntervalTrigger(hours=interval_hours),
         id="telegram_notify",
         name=f"Check signals every {interval_hours}h, digest at {digest_hour}:00",
@@ -268,7 +286,7 @@ def run_scheduler(coins, interval_hours: int, digest_hour: int, lookback_days: i
     )
     print(f"Scheduler started: checking every {interval_hours}h, daily digest at {digest_hour}:00.")
     print("Press Ctrl+C to stop.")
-    run_once(coins, digest_hour, lookback_days)
+    run_once(coins, digest_hour, lookback_days, update_sentiment_daily)
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
@@ -284,6 +302,7 @@ def main():
     parser.add_argument("--digest-hour", type=int, default=9, help="Local hour (0-23) to send the daily digest (default: 9)")
     parser.add_argument("--lookback-days", type=int, default=400, help="Days of history to fetch/train on (default: 400)")
     parser.add_argument("--coins", nargs="+", default=["BTC", "ETH"], help="Coins to track (default: BTC ETH)")
+    parser.add_argument("--no-sentiment", action="store_true", help="Skip the once-daily news sentiment update")
     args = parser.parse_args()
 
     if args.setup:
@@ -291,10 +310,12 @@ def main():
         return
 
     if args.schedule:
-        run_scheduler(tuple(args.coins), args.interval_hours, args.digest_hour, args.lookback_days)
+        run_scheduler(tuple(args.coins), args.interval_hours, args.digest_hour, args.lookback_days,
+                     update_sentiment_daily=not args.no_sentiment)
     else:
         # --once or no flag: single pass
-        run_once(tuple(args.coins), args.digest_hour, args.lookback_days)
+        run_once(tuple(args.coins), args.digest_hour, args.lookback_days,
+                 update_sentiment_daily=not args.no_sentiment)
 
 
 if __name__ == "__main__":

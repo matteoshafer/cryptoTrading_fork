@@ -4,6 +4,8 @@ Fetches headlines and full article text via Google News RSS (free, no API key).
 Designed to feed into the existing sentiment analysis pipeline in functions.py.
 """
 
+from __future__ import annotations
+
 import time
 import re
 import urllib.parse

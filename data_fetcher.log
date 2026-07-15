@@ -55,3 +55,18 @@
 2026-07-14 22:53:08,917 - INFO - Data is already up to date
 2026-07-14 22:53:38,771 - INFO - Added job "Check signals every 4.0h, digest at 9:00" to job store "default"
 2026-07-14 22:53:38,771 - INFO - Scheduler started
+2026-07-14 23:19:42,338 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-14 23:19:42,339 - INFO - Last data point: 2026-07-14
+2026-07-14 23:19:42,339 - INFO - Data is already up to date
+2026-07-14 23:20:00,715 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-14 23:20:00,715 - INFO - Last data point: 2026-07-14
+2026-07-14 23:20:00,715 - INFO - Data is already up to date
+2026-07-14 23:20:57,497 - INFO - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-07-14 23:20:57,500 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-14 23:20:57,500 - INFO - Last data point: 2026-07-14
+2026-07-14 23:20:57,500 - INFO - Data is already up to date
+2026-07-14 23:21:28,019 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-14 23:21:28,019 - INFO - Last data point: 2026-07-14
+2026-07-14 23:21:28,019 - INFO - Data is already up to date
+2026-07-14 23:21:57,364 - INFO - Added job "Check signals every 4.0h, digest at 9:00" to job store "default"
+2026-07-14 23:21:57,364 - INFO - Scheduler started
