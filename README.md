@@ -146,17 +146,31 @@ the existing walk-forward signal pipeline.
 
 ### Running unattended (macOS)
 
-To keep `telegram_notify.py --schedule` running in the background across
-reboots, load it as a `launchd` agent:
+`--schedule` uses an in-process timer, which is fine on a server but wrong
+for a laptop: while your Mac sleeps, the Python process (and its timer)
+sleeps too, so a run can come due, be missed, and never fire — nothing
+scheduled during that sleep gets caught up. `launchd` doesn't have that
+problem: it's sleep-aware and runs missed `StartInterval` jobs promptly on
+wake. So on macOS, use `launchd` with `telegram_notify.py --once` instead
+of the script's own `--schedule`:
 
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.matteoshafer.cryptotrading-telegram.plist
-launchctl print gui/$(id -u)/com.matteoshafer.cryptotrading-telegram   # check status
-launchctl bootout gui/$(id -u)/com.matteoshafer.cryptotrading-telegram # stop it
+cp launchd/com.example.cryptotrading-telegram.plist.example \
+   ~/Library/LaunchAgents/com.example.cryptotrading-telegram.plist
+# then edit that copy: replace /path/to/cryptoTrading_fork with your actual
+# path, and rename the Label/filename if you want something other than
+# "com.example"
+
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.cryptotrading-telegram.plist
+launchctl print gui/$(id -u)/com.example.cryptotrading-telegram   # check status
+launchctl bootout gui/$(id -u)/com.example.cryptotrading-telegram # stop it
 ```
 
-It restarts automatically on crash (`KeepAlive`) and writes to
-`telegram_notify.out.log` / `telegram_notify.err.log`.
+`RunAtLoad` fires an immediate check on load; `StartInterval` (14400s = 4h)
+repeats it, catching up on wake if a run was missed during sleep. Logs go
+to `telegram_notify.out.log` / `telegram_notify.err.log`. On an
+always-on Linux server, `telegram_notify.py --schedule` (systemd or just a
+persistent shell) is fine — the sleep problem only applies to laptops.
 
 ## Project Structure
 

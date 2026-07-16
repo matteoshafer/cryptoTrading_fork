@@ -70,3 +70,24 @@
 2026-07-14 23:21:28,019 - INFO - Data is already up to date
 2026-07-14 23:21:57,364 - INFO - Added job "Check signals every 4.0h, digest at 9:00" to job store "default"
 2026-07-14 23:21:57,364 - INFO - Scheduler started
+2026-07-16 02:05:04,746 - WARNING - Run time of job "Check signals every 4.0h, digest at 9:00 (trigger: interval[4:00:00], next run at: 2026-07-15 03:20:57 PDT)" was missed by 2:44:07.248120
+2026-07-16 11:19:08,890 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-16 11:19:08,890 - INFO - Last data point: 2026-07-14
+2026-07-16 11:19:08,890 - INFO - Fetching BTC data from 2026-07-15 to 2026-07-16
+2026-07-16 11:19:09,757 - INFO - Fetched 2 total candles
+2026-07-16 11:19:09,761 - INFO - Combined data: 402 total records
+2026-07-16 11:19:09,766 - INFO - Technical indicators calculated
+2026-07-16 11:19:09,777 - INFO - Data saved to fulldata/BTC_df.csv
+2026-07-16 11:19:28,249 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-16 11:19:28,249 - INFO - Last data point: 2026-07-14
+2026-07-16 11:19:28,249 - INFO - Fetching ETH data from 2026-07-15 to 2026-07-16
+2026-07-16 11:19:29,231 - INFO - Fetched 2 total candles
+2026-07-16 11:19:29,234 - INFO - Combined data: 402 total records
+2026-07-16 11:19:29,238 - INFO - Technical indicators calculated
+2026-07-16 11:19:29,249 - INFO - Data saved to fulldata/ETH_df.csv
+2026-07-16 11:22:50,710 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-16 11:22:50,710 - INFO - Last data point: 2026-07-16
+2026-07-16 11:22:50,710 - INFO - Data is already up to date
+2026-07-16 11:23:20,217 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-16 11:23:20,217 - INFO - Last data point: 2026-07-16
+2026-07-16 11:23:20,217 - INFO - Data is already up to date

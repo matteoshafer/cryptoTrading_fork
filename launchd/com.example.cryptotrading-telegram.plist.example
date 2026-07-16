@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.cryptotrading-telegram</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/cryptoTrading_fork/venv_telegram/bin/python3</string>
+        <string>/path/to/cryptoTrading_fork/telegram_notify.py</string>
+        <string>--once</string>
+        <string>--digest-hour</string>
+        <string>9</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/path/to/cryptoTrading_fork</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- launchd-native scheduling instead of the script's own --schedule
+         loop: launchd tracks missed StartInterval firings (e.g. while the
+         Mac was asleep) and runs the job promptly on wake, which an
+         in-process scheduler inside a long-running Python process cannot
+         do -- it just misses the window entirely. -->
+    <key>StartInterval</key>
+    <integer>14400</integer>
+
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <key>StandardOutPath</key>
+    <string>/path/to/cryptoTrading_fork/telegram_notify.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/path/to/cryptoTrading_fork/telegram_notify.err.log</string>
+</dict>
+</plist>
