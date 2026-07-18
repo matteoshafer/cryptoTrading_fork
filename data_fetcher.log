@@ -91,3 +91,33 @@
 2026-07-16 11:23:20,217 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
 2026-07-16 11:23:20,217 - INFO - Last data point: 2026-07-16
 2026-07-16 11:23:20,217 - INFO - Data is already up to date
+2026-07-17 16:06:23,042 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-17 16:06:23,045 - INFO - Last data point: 2026-07-16
+2026-07-17 16:06:23,045 - INFO - Fetching BTC data from 2026-07-17 to 2026-07-17
+2026-07-17 16:06:23,999 - INFO - Fetched 1 total candles
+2026-07-17 16:06:24,003 - INFO - Combined data: 401 total records
+2026-07-17 16:06:24,013 - INFO - Technical indicators calculated
+2026-07-17 16:06:24,025 - INFO - Data saved to fulldata/BTC_df.csv
+2026-07-17 16:17:20,437 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-17 16:17:20,438 - INFO - Last data point: 2026-07-16
+2026-07-17 16:17:20,438 - INFO - Fetching ETH data from 2026-07-17 to 2026-07-17
+2026-07-17 16:17:21,390 - INFO - Fetched 1 total candles
+2026-07-17 16:17:21,393 - INFO - Combined data: 401 total records
+2026-07-17 16:17:21,398 - INFO - Technical indicators calculated
+2026-07-17 16:17:21,410 - INFO - Data saved to fulldata/ETH_df.csv
+2026-07-17 16:36:15,433 - WARNING - '(ReadTimeoutError("HTTPSConnectionPool(host='huggingface.co', port=443): Read timed out. (read timeout=10)"), '(Request ID: 4eec10ab-8425-4594-9921-84638cf3041c)')' thrown while requesting HEAD https://huggingface.co/mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis/resolve/main/tokenizer_config.json
+2026-07-17 16:36:15,433 - WARNING - Retrying in 1s [Retry 1/5].
+2026-07-18 15:03:23,139 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-18 15:03:23,140 - INFO - Last data point: 2026-07-17
+2026-07-18 15:03:23,140 - INFO - Fetching BTC data from 2026-07-18 to 2026-07-18
+2026-07-18 15:03:23,968 - INFO - Fetched 1 total candles
+2026-07-18 15:03:23,971 - INFO - Combined data: 401 total records
+2026-07-18 15:03:23,978 - INFO - Technical indicators calculated
+2026-07-18 15:03:23,988 - INFO - Data saved to fulldata/BTC_df.csv
+2026-07-18 15:03:42,070 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-18 15:03:42,070 - INFO - Last data point: 2026-07-17
+2026-07-18 15:03:42,070 - INFO - Fetching ETH data from 2026-07-18 to 2026-07-18
+2026-07-18 15:03:42,802 - INFO - Fetched 1 total candles
+2026-07-18 15:03:42,805 - INFO - Combined data: 401 total records
+2026-07-18 15:03:42,809 - INFO - Technical indicators calculated
+2026-07-18 15:03:42,820 - INFO - Data saved to fulldata/ETH_df.csv

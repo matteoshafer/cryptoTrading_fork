@@ -5,9 +5,22 @@
     <key>Label</key>
     <string>com.example.cryptotrading-telegram</string>
 
+    <!-- Wrapped in caffeinate -s -i: on a laptop, macOS dark-wakes for very
+         brief windows (observed as short as ~1 minute on battery) to do
+         maintenance and falls right back asleep. A model-retrain check can
+         take 1-2 minutes, and without this wrapper it can get killed
+         mid-run before finishing or even flushing its logs -- every run
+         silently vanishes and you stop getting alerts with no error
+         anywhere. caffeinate holds the system awake for exactly as long as
+         this one process takes, then lets it sleep again normally
+         afterward. -->
     <key>ProgramArguments</key>
     <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-s</string>
+        <string>-i</string>
         <string>/path/to/cryptoTrading_fork/venv_telegram/bin/python3</string>
+        <string>-u</string>
         <string>/path/to/cryptoTrading_fork/telegram_notify.py</string>
         <string>--once</string>
         <string>--digest-hour</string>

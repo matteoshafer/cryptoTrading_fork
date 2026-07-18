@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.cryptotrading-telegram-commands</string>
+
+    <!-- Unlike the digest job (com.example.cryptotrading-telegram.plist),
+         this one has to be continuously listening to catch commands as
+         they're typed, not run briefly on a schedule -- so it uses
+         KeepAlive instead of StartInterval, and does NOT need caffeinate:
+         while the Mac sleeps, no one can get a live response anyway, and
+         KeepAlive just relaunches the listener whenever the system wakes. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/cryptoTrading_fork/venv_telegram/bin/python3</string>
+        <string>-u</string>
+        <string>/path/to/cryptoTrading_fork/telegram_notify.py</string>
+        <string>--listen</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/path/to/cryptoTrading_fork</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <key>StandardOutPath</key>
+    <string>/path/to/cryptoTrading_fork/telegram_commands.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/path/to/cryptoTrading_fork/telegram_commands.err.log</string>
+</dict>
+</plist>

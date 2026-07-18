@@ -172,6 +172,24 @@ to `telegram_notify.out.log` / `telegram_notify.err.log`. On an
 always-on Linux server, `telegram_notify.py --schedule` (systemd or just a
 persistent shell) is fine — the sleep problem only applies to laptops.
 
+**If runs still silently stop happening** (`telegram_state.json`'s dates
+fall behind and nothing shows up in the logs, not even an error): the job
+is being killed mid-run by the next sleep cycle before it can finish or
+flush its output. A model-retrain check takes 1-2 minutes, but on battery
+some Macs dark-wake for well under a minute before sleeping again — not
+long enough. The template already wraps the command in
+`caffeinate -s -i`, which holds the system awake for exactly as long as
+that one process runs; if you're seeing this on a plist from before that
+fix, add the `caffeinate -s -i` prefix yourself (see the template) and
+reload the agent.
+
+To respond to commands typed in the chat (`/help`, `/status`, `/signal
+[COIN]`), run `telegram_notify.py --listen` as a *second*, separately
+loaded agent — see `launchd/com.example.cryptotrading-telegram-commands.plist.example`.
+Unlike the digest job, this one needs `KeepAlive` instead of
+`StartInterval`, since it has to be continuously listening rather than
+running briefly on a schedule.
+
 ## Project Structure
 
 ```
