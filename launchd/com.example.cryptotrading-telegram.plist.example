@@ -5,6 +5,23 @@
     <key>Label</key>
     <string>com.example.cryptotrading-telegram</string>
 
+    <!-- This is a system LaunchDaemon (loaded into the `system` domain, not
+         a per-user `gui/<uid>` LaunchAgent -- see the install steps in
+         README.md). On at least one real Mac, a gui-domain agent's
+         RunAtLoad/StartInterval never fired automatically even once across
+         29+ hours and dozens of observed dark-wake cycles, while manual
+         `launchctl kickstart` always worked -- GUI-domain agents tied to a
+         login session were apparently not being serviced during brief
+         Power Nap windows. System daemons are exactly what that mode is
+         designed to run. UserName keeps it running as your normal user
+         (not root) for correct file ownership on .env, telegram_state.json,
+         fulldata/*.csv, etc. If gui-domain StartInterval works fine on your
+         machine, a plain LaunchAgent is simpler -- try that first and only
+         move to a system daemon if you hit the same silent-never-fires
+         symptom. -->
+    <key>UserName</key>
+    <string>your-macos-username</string>
+
     <!-- Wrapped in caffeinate -s -i: on a laptop, macOS dark-wakes for very
          brief windows (observed as short as ~1 minute on battery) to do
          maintenance and falls right back asleep. A model-retrain check can

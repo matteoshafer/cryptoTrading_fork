@@ -95,7 +95,18 @@ def fetch_article_text(url: str, timeout: int = 15) -> str | None:
 
 def fetch_rss_articles(query: str, max_articles: int = 20) -> list[dict]:
     """Fetch article metadata from Google News RSS for a query."""
-    feed = feedparser.parse(_rss_url(query))
+    # feedparser.parse(url) fetches the URL itself with no timeout at all --
+    # if the RSS endpoint accepts the connection but stalls (observed in
+    # practice), this can hang forever with no way to recover. Fetching the
+    # bytes ourselves with an explicit timeout and handing feedparser
+    # already-downloaded content (no network I/O of its own) bounds it.
+    try:
+        resp = requests.get(_rss_url(query), headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        feed = feedparser.parse(resp.content)
+    except Exception as e:
+        print(f"  RSS fetch failed for '{query}': {e}")
+        return []
     articles = []
     for entry in feed.entries[:max_articles]:
         articles.append({

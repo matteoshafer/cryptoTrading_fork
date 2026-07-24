@@ -77,8 +77,15 @@ def score_articles(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def update_sentiment(coin: str, max_per_query: int = 15) -> pd.DataFrame:
-    """Scrape recent news, score it, aggregate to daily avg_sentiment, merge into fulldata CSV."""
+def update_sentiment(coin: str, max_per_query: int = 6) -> pd.DataFrame:
+    """Scrape recent news, score it, aggregate to daily avg_sentiment, merge into fulldata CSV.
+
+    max_per_query default lowered from an earlier 15 to 6: on a slow/flaky
+    network each article fetch can take several seconds even with a working
+    timeout, and 4 queries x 15 articles x 2 coins made a scheduled run's
+    total runtime unpredictable enough to matter for reliability. 6 still
+    gives a reasonable daily sample while keeping worst-case runtime bounded.
+    """
     print(f"Scraping news for {coin}...")
     articles = scrape_news_for_coin(coin, max_per_query=max_per_query)
 
@@ -118,7 +125,7 @@ def update_sentiment(coin: str, max_per_query: int = 15) -> pd.DataFrame:
 def main():
     parser = argparse.ArgumentParser(description="Update avg_sentiment from fresh news for one or more coins")
     parser.add_argument("coins", nargs="+", help="Coins to update, e.g. BTC ETH")
-    parser.add_argument("--max-per-query", type=int, default=15, help="Articles per search query (default: 15)")
+    parser.add_argument("--max-per-query", type=int, default=6, help="Articles per search query (default: 6)")
     args = parser.parse_args()
 
     for coin in args.coins:

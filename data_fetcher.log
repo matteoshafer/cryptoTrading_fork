@@ -121,3 +121,25 @@
 2026-07-18 15:03:42,805 - INFO - Combined data: 401 total records
 2026-07-18 15:03:42,809 - INFO - Technical indicators calculated
 2026-07-18 15:03:42,820 - INFO - Data saved to fulldata/ETH_df.csv
+2026-07-24 06:59:21,751 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-24 06:59:21,755 - INFO - Last data point: 2026-07-18
+2026-07-24 06:59:21,755 - INFO - Fetching BTC data from 2026-07-19 to 2026-07-24
+2026-07-24 06:59:23,555 - INFO - Fetched 6 total candles
+2026-07-24 06:59:23,560 - INFO - Combined data: 406 total records
+2026-07-24 06:59:23,573 - INFO - Technical indicators calculated
+2026-07-24 06:59:23,589 - INFO - Data saved to fulldata/BTC_df.csv
+2026-07-24 07:29:30,091 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-24 07:29:30,091 - INFO - Last data point: 2026-07-18
+2026-07-24 07:29:30,092 - INFO - Fetching ETH data from 2026-07-19 to 2026-07-24
+2026-07-24 07:29:31,000 - INFO - Fetched 6 total candles
+2026-07-24 07:29:31,006 - INFO - Combined data: 406 total records
+2026-07-24 07:29:31,012 - INFO - Technical indicators calculated
+2026-07-24 07:29:31,023 - INFO - Data saved to fulldata/ETH_df.csv
+2026-07-24 07:29:31,083 - WARNING - '(ProtocolError('Connection aborted.', ConnectionResetError(54, 'Connection reset by peer')), '(Request ID: 7137e7cb-29a4-4ee3-bf6e-d5c7e649c66e)')' thrown while requesting HEAD https://huggingface.co/mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis/resolve/main/tokenizer_config.json
+2026-07-24 07:29:31,083 - WARNING - Retrying in 1s [Retry 1/5].
+2026-07-24 14:18:07,258 - INFO - Loaded 400 existing records from fulldata/BTC_df.csv
+2026-07-24 14:18:07,258 - INFO - Last data point: 2026-07-24
+2026-07-24 14:18:07,258 - INFO - Data is already up to date
+2026-07-24 14:18:36,925 - INFO - Loaded 400 existing records from fulldata/ETH_df.csv
+2026-07-24 14:18:36,925 - INFO - Last data point: 2026-07-24
+2026-07-24 14:18:36,925 - INFO - Data is already up to date

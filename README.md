@@ -173,15 +173,55 @@ always-on Linux server, `telegram_notify.py --schedule` (systemd or just a
 persistent shell) is fine — the sleep problem only applies to laptops.
 
 **If runs still silently stop happening** (`telegram_state.json`'s dates
-fall behind and nothing shows up in the logs, not even an error): the job
-is being killed mid-run by the next sleep cycle before it can finish or
-flush its output. A model-retrain check takes 1-2 minutes, but on battery
-some Macs dark-wake for well under a minute before sleeping again — not
-long enough. The template already wraps the command in
-`caffeinate -s -i`, which holds the system awake for exactly as long as
-that one process runs; if you're seeing this on a plist from before that
-fix, add the `caffeinate -s -i` prefix yourself (see the template) and
-reload the agent.
+fall behind and nothing shows up in the logs, not even an error), there are
+two distinct failure modes we've actually hit, in order of how likely you
+are to hit them:
+
+1. **The job is being killed mid-run by the next sleep cycle** before it
+   can finish or flush its output. A model-retrain check takes 1-2 minutes,
+   but on battery some Macs dark-wake for well under a minute before
+   sleeping again — not long enough. Fixed by wrapping the command in
+   `caffeinate -s -i` (already in the template), which holds the system
+   awake for exactly as long as that one process runs.
+2. **`RunAtLoad`/`StartInterval` never fire automatically at all**, even
+   with `caffeinate` in place — `runs` stays at 0 or 1 forever in
+   `launchctl print`, but `launchctl kickstart` always works fine when you
+   trigger it by hand. On one real machine this gui-domain LaunchAgent
+   simply never got serviced during Power Nap/dark-wake despite dozens of
+   wake cycles a day. If you hit this, install the *same* plist as a
+   **system LaunchDaemon** instead (needs `sudo`, since it writes to
+   `/Library/LaunchDaemons`, a system directory the current user can't
+   write to):
+
+   ```bash
+   # edit com.example.cryptotrading-telegram.plist.example first: fill in
+   # your real path AND set <key>UserName</key> to your macOS username
+   # (keeps the daemon running as you, not root)
+   sudo cp launchd/com.example.cryptotrading-telegram.plist.example \
+        /Library/LaunchDaemons/com.example.cryptotrading-telegram.plist
+   sudo chown root:wheel /Library/LaunchDaemons/com.example.cryptotrading-telegram.plist
+   sudo chmod 644 /Library/LaunchDaemons/com.example.cryptotrading-telegram.plist
+   sudo launchctl bootstrap system /Library/LaunchDaemons/com.example.cryptotrading-telegram.plist
+   sudo launchctl print system/com.example.cryptotrading-telegram   # check status
+   ```
+
+   `sudo` here has to be typed by you in an actual Terminal — it needs an
+   interactive password prompt, which nothing automated (including an AI
+   assistant) can supply on your behalf. If you were previously running
+   this as a gui-domain LaunchAgent, unload it first
+   (`launchctl bootout gui/$(id -u)/com.example.cryptotrading-telegram`) so
+   you don't get duplicate digests from both.
+
+A third thing worth knowing about even once scheduling itself is reliable:
+on a slow or flaky network, `update_sentiment.py` scraping dozens of
+articles sequentially (each fetch with its own short delay) can make a
+single run take much longer than usual — we've seen a run stretch past 10
+minutes on a bad connection. `news_scraper.py`'s RSS fetch now has an
+explicit timeout (an earlier version had none at all and could hang
+indefinitely on a stalled connection), and `update_sentiment.py`'s default
+article count per query was lowered from 15 to 6 specifically to keep
+worst-case runtime bounded — raise `--max-per-query` back up if your
+network is reliable and you want a larger daily sentiment sample.
 
 To respond to commands typed in the chat (`/help`, `/status`, `/signal
 [COIN]`), run `telegram_notify.py --listen` as a *second*, separately
