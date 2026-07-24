@@ -2,6 +2,8 @@
 
 An ensemble ML trading system for cryptocurrency that generates buy/sell/hold signals and backtests strategy performance across historical data.
 
+**📊 [See honest, held-out backtest results](BACKTEST_RESULTS.md)** — walk-forward, out-of-sample, includes the losses, not just the wins.
+
 ## Features
 
 - **10 ML models** combined into an ensemble: XGBoost, LightGBM, Random Forest, ARIMA/SARIMA, Prophet, SVR, LSTM/GRU, TCN, GBM Simulator, and LLM sentiment (RoBERTa)
